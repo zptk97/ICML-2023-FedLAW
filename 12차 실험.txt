@@ -1,0 +1,46 @@
+12차 실험 (exp_name=method_E10)
+	Local epoch 을 더 늘려보기
+	Local epoch E=10 Client N=20 C=1.0 alpha=0.1
+
+공통 설정
+--dirichlet_alpha=0.1 --node_num=20 --T=200 --E=10 --dataset=cifar10 --select_ratio=1.0 --local_model=CNN --random_seed=10 --server_valid_ratio=0.02 --fixed_gamma=False --lr=0.08 --local_wd_rate=5e-4 --momentum=0.9
+개별 설정
+--exp_name=server기법_base --server_method=server기법
+
+1. FedLAW
+	1. python main_fedlaw.py --server_method=fedlaw --exp_name=fedlaw_E10
+2. FedAvg
+	1. python main_baselines.py --server_method=fedavg --exp_name=fedavg_E10
+3. global-local layer-wise gradients distance
+	1. python main_propose.py --server_method=gl_layer_gradients_distance --exp_name=gl_layer_gradients_distance_E10
+4. global-local model-wise gradients distance
+	1. python main_propose.py --server_method=gl_model_gradients_distance --exp_name=gl_model_gradients_distance_E10
+5. local-local layer-wise gradients distance
+	1. python main_propose.py --server_method=ll_layer_gradients_distance --exp_name=ll_layer_gradients_distance_E10
+6. local-local model-wise gradients distance
+	1. python main_propose.py --server_method=ll_model_gradients_distance --exp_name=ll_model_gradients_distance_E10
+7. global-local layer-wise cosine similarity
+	1. python main_propose.py --server_method=gl_layer_cosine --exp_name=gl_layer_cosine_E10
+8. global-local model-wise cosine similarity
+	1. python main_propose.py --server_method=gl_model_cosine --exp_name=gl_model_cosine_E10
+9. local-local layer-wise cosine similarity
+	1. python main_propose.py --server_method=ll_layer_cosine --exp_name=ll_layer_cosine_E10
+10. local-local model-wise cosine similarity
+	1. python main_propose.py --server_method=ll_model_cosine --exp_name=ll_model_cosine_E10
+11. global-local output distance with proxy
+	1. python main_propose.py --server_method=gl_model_output_proxy --exp_name=gl_model_output_proxy_E10
+12. global-local output distance with SND
+	1. python main_propose.py --server_method=gl_model_output_snd --exp_name=gl_model_output_snd_E10
+13. local-local output distance with proxy
+	1. python main_propose.py --server_method=ll_model_output_proxy --exp_name=ll_model_output_proxy_E10
+14. local-local output distance with snd
+	1. python main_propose.py --server_method=ll_model_output_snd --exp_name=ll_model_output_snd_E10
+15. proxy data acc
+	1. python main_propose.py --server_method=model_acc_proxy --exp_name=model_acc_proxy_E10
+16. class 수 기반
+	1. python main_propose.py --server_method=model_class --exp_name=model_class_E10
+17. overlap class
+	1. python main_propose.py --server_method=fedavg --various_distribute=1 --exp_name=fedavg_overlap_E10
+
+
+
