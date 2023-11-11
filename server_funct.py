@@ -48,6 +48,647 @@ def get_client_params_with_serverlr(server_lr, prev_param, client_updates):
     return client_params
 
 ##############################################################################
+# Proposed function (FedAvg, FedDF, FedBE, FedDyn, FedAdam, Finetune, etc.)
+##############################################################################
+
+def proposed_generate_global_model(args, gamma ,agg_weights, client_params, central_node):
+    # update the global model with layer-wise aggregation weights
+    if "layer" in args.server_method:
+        global_params = copy.deepcopy(client_params[0])
+        j = 0
+        for name_param in global_params:
+            param = torch.zeros_like(global_params[name_param])
+            for i in range(len(client_params)):
+                param += gamma * client_params[i][name_param] * agg_weights[i][j]
+            global_params[name_param] = param
+            j += 1
+        central_node.model.load_state_dict(global_params)
+    elif "model" in args.server_method:
+        global_params = copy.deepcopy(client_params[0])
+        for name_param in global_params:
+            param = torch.zeros_like(global_params[name_param])
+            for i in range(len(client_params)):
+                param += gamma * client_params[i][name_param] * agg_weights[i]
+            global_params[name_param] = param
+        central_node.model.load_state_dict(global_params)
+    elif args.server_method == 'fedavg':
+        global_params = copy.deepcopy(client_params[0])
+        for name_param in global_params:
+            param = torch.zeros_like(global_params[name_param])
+            for i in range(len(client_params)):
+                param += gamma * client_params[i][name_param] * agg_weights[i]
+            global_params[name_param] = param
+        central_node.model.load_state_dict(global_params)
+    else:
+        raise ValueError('Undefined server method...')
+    return central_node
+
+def proposed_optimization(args, agg_weights, client_params, central_node, data, select_list):
+    # calculate aggregation weights
+    if args.server_method == 'gl_layer_gradients_distance':
+        print("global-local layer-wise gradients distance 구현")
+        agg_weights = gl_layer_gradients_distance(central_node, client_params)
+    elif args.server_method == 'gl_model_gradients_distance':
+        print("global-local model-wise gradients distance 구현")
+        agg_weights = gl_model_gradients_distance(central_node, client_params)
+    elif args.server_method == 'll_layer_gradients_distance':
+        print("local-local layer-wise gradients distance 구현")
+        agg_weights = ll_layer_gradients_distance(central_node, client_params)
+    elif args.server_method == 'll_model_gradients_distance':
+        print("local-local model-wise gradients distance 구현")
+        agg_weights = ll_model_gradients_distance(central_node, client_params)
+    elif args.server_method == 'gl_layer_cosine':
+        print("global-local layer-wise cosine 구현")
+        agg_weights = gl_layer_cosine(central_node, client_params)
+    elif args.server_method == 'gl_model_cosine':
+        print("global-local model-wise cosine 구현")
+        agg_weights = gl_model_cosine(central_node, client_params)
+    elif args.server_method == 'll_layer_cosine':
+        print("local-local layer-wise cosine 구현")
+        agg_weights = ll_layer_cosine(central_node, client_params)
+    elif args.server_method == 'll_model_cosine':
+        print("local-local model-wise cosine 구현")
+        agg_weights = ll_model_cosine(central_node, client_params)
+    elif args.server_method == 'gl_model_output_proxy':
+        print("global-local output distance with proxy data 구현")
+        agg_weights = gl_model_output_proxy(central_node, client_params)
+    elif args.server_method == 'gl_model_output_snd':
+        print("global-local output distance with standard normal distribution noise 구현")
+        agg_weights = gl_model_output_snd(central_node, client_params)
+    elif args.server_method == 'll_model_output_proxy':
+        print("local-local output distance with proxy data 구현")
+        agg_weights = ll_model_output_proxy(central_node, client_params)
+    elif args.server_method == 'll_model_output_snd':
+        print("local-local output distance with standard normal distribution noise 구현")
+        agg_weights = ll_model_output_snd(central_node, client_params)
+    elif args.server_method == 'model_acc_proxy':
+        print("accuracy based aggregation with proxy data 구현")
+        agg_weights = model_acc_proxy(central_node, client_params)
+    elif args.server_method == 'model_class':
+        print("client's class 구현")
+        agg_weights = model_class(central_node, client_params, data, select_list)
+    elif args.server_method == 'fedavg':
+        print("기본 FedAvg")
+        agg_weights = agg_weights
+    else:
+        raise ValueError('Undefined server method...')
+    if args.fixed_gamma:
+        gamma = float(args.fixed_gamma)
+    else:
+        gamma = 1.0
+    return gamma, agg_weights
+
+def gl_layer_gradients_distance(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # how many layer?
+    layer = 0
+    for i in global_model:
+        layer += 1
+
+    # layer-wise distance calculate
+    layer_distance = []
+    for i in range(len(gradients)):
+        tmp = []
+        for name_param in gradients[0]:
+            tmp.append(torch.linalg.vector_norm(gradients[i][name_param], ord=2).item())
+        layer_distance.append(tmp)
+
+    # aggregation weights calculate
+    agg_weights = [[0] * layer for _ in range(len(gradients))]
+    for i in range(layer):
+        layer_sum = 0
+        for j in range(len(gradients)):
+            layer_sum += (1 / layer_distance[j][i])
+        for j in range(len(gradients)):
+            agg_weights[j][i] = (1 / layer_distance[j][i]) / layer_sum
+
+    return agg_weights
+
+def gl_model_gradients_distance(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # gradients concatenate
+    flatted_gradients = []
+    for i in range(len(gradients)):
+        tmp = None
+        for name_param in gradients[i]:
+            if tmp == None:
+                tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
+            else:
+                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
+        flatted_gradients.append(tmp)
+
+    # model-wise distance calculate
+    model_distance = []
+    for i in range(len(flatted_gradients)):
+        model_distance.append(torch.linalg.vector_norm(flatted_gradients[i], ord=2).item())
+
+    # aggregation weights calculate
+    model_distance = torch.tensor(model_distance)
+    agg_weights = (1 / model_distance) / sum(1 / model_distance)
+    return agg_weights
+
+def ll_layer_gradients_distance(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # how many layer?
+    layer = 0
+    for i in global_model:
+        layer += 1
+
+    # local-local layer-wise distance calculate
+    layer_distance = []
+    for i in range(len(gradients)):
+        tmp_i = []
+        for j in range(len(gradients)):
+            tmp_j = []
+            for name_param in gradients[0]:
+                tmp_j.append(torch.linalg.vector_norm(gradients[i][name_param] - gradients[j][name_param], ord=2).item())
+            tmp_i.append(tmp_j)
+        layer_distance.append(tmp_i)
+
+    # layer-wise distance average calculate
+    mean_layer_distance = []
+    for i in range(len(gradients)):
+        mean = []
+        for k in range(layer):
+            layer_mean = 0.0
+            for j in range(len(gradients)):
+                layer_mean += layer_distance[i][j][k]
+            mean.append(layer_mean / len(gradients))
+        mean_layer_distance.append(mean)
+
+    # aggregation weights calculate
+    agg_weights = [[0] * layer for _ in range(len(gradients))]
+    for i in range(layer):
+        layer_sum = 0
+        for j in range(len(gradients)):
+            layer_sum += (1 / mean_layer_distance[j][i])
+        for j in range(len(gradients)):
+            agg_weights[j][i] = (1 / mean_layer_distance[j][i]) / layer_sum
+
+    return agg_weights
+
+def ll_model_gradients_distance(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # gradients concatenate
+    flatted_gradients = []
+    for i in range(len(gradients)):
+        tmp = None
+        for name_param in gradients[i]:
+            if tmp == None:
+                tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
+            else:
+                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
+        flatted_gradients.append(tmp)
+
+    # local-local model-wise distance calculate
+    model_distance = []
+    for i in range(len(gradients)):
+        tmp = []
+        for j in range(len(gradients)):
+            tmp.append(torch.linalg.vector_norm(flatted_gradients[i] - flatted_gradients[j], ord=2).item())
+        model_distance.append(tmp)
+
+    # model-wise distance average calculate
+    mean_model_distance = []
+    for i in range(len(gradients)):
+        mean = 0.0
+        for j in range(len(gradients)):
+            mean += model_distance[i][j]
+        mean_model_distance.append(mean / len(gradients))
+
+    # aggregation weights calculate
+    mean_model_distance = torch.tensor(mean_model_distance)
+    agg_weights = (1 / mean_model_distance) / sum(1 / mean_model_distance)
+
+    return agg_weights
+
+def gl_layer_cosine(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # how many layer?
+    layer = 0
+    for i in global_model:
+        layer += 1
+
+    # global-local layer-wise weights cosine similarity calculate
+    cosine_similarity = []
+    for i in range(len(client_params)):
+        tmp = []
+        for name_param in global_model:
+            inner = (global_model[name_param] * client_params[i][name_param]).sum()
+            norm1 = torch.linalg.vector_norm(global_model[name_param], ord=2)
+            norm2 = torch.linalg.vector_norm(client_params[i][name_param], ord=2)
+            # 추후 문제 있을 수 있음, 문제가 있다면 먼저 살펴보기
+            if norm1 == 0 or norm2 == 0:
+                tmp.append(0.0)
+            else:
+                tmp.append((inner / (norm1 * norm2)).item())
+        cosine_similarity.append(tmp)
+
+    # normalize cosine similarity -1~1 -> 0~1 for convert it to aggregation weights
+    for i in range(len(cosine_similarity)):
+        for j in range(len(cosine_similarity[i])):
+            cosine_similarity[i][j] = (cosine_similarity[i][j] + 1) / 2
+
+    # aggregation weights calculate
+    agg_weights = [[0] * layer for _ in range(len(client_params))]
+    for i in range(layer):
+        layer_sum = 0
+        for j in range(len(client_params)):
+            layer_sum += cosine_similarity[j][i]
+        for j in range(len(client_params)):
+            agg_weights[j][i] = cosine_similarity[j][i] / layer_sum
+    agg_weights = torch.tensor(agg_weights)
+    return agg_weights
+
+def gl_model_cosine(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # weights concatenate
+    flatted_weights = []
+    for i in range(len(client_params)):
+        tmp = None
+        for name_param in client_params[i]:
+            if tmp == None:
+                tmp = torch.flatten(copy.deepcopy(client_params[i][name_param]))
+            else:
+                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(client_params[i][name_param]))))
+        flatted_weights.append(tmp)
+    flatted_global = None
+    for name_param in global_model:
+        if flatted_global == None:
+            flatted_global = torch.flatten(copy.deepcopy(global_model[name_param]))
+        else:
+            flatted_global = torch.cat((flatted_global, torch.flatten(copy.deepcopy(global_model[name_param]))))
+
+    # global-local model-wise weights cosine similarity calculate
+    cosine_similarity = []
+    for i in range(len(client_params)):
+        inner = (flatted_global * flatted_weights[i]).sum()
+        norm1 = torch.linalg.vector_norm(flatted_global, ord=2)
+        norm2 = torch.linalg.vector_norm(flatted_weights[i], ord=2)
+        if norm1 == 0 or norm2 == 0:
+            cosine_similarity.append(0.0)
+        else:
+            cosine_similarity.append((inner / (norm1 * norm2)).item())
+
+    # normalize cosine similarity -1~1 -> 0~1 for convert it to aggregation weights
+    for i in range(len(cosine_similarity)):
+        cosine_similarity[i] = (cosine_similarity[i] + 1) / 2
+
+    # aggregation weights calculate
+    cosine_similarity = torch.tensor(cosine_similarity)
+    agg_weights = cosine_similarity / sum(cosine_similarity)
+
+    return agg_weights
+
+def ll_layer_cosine(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # how many layer?
+    layer = 0
+    for i in global_model:
+        layer += 1
+
+    # local-local layer-wise gradients cosine similarity calculate & normalize
+    cosine_similarity = []
+    for i in range(len(client_params)):
+        tmp_i = []
+        for j in range(len(client_params)):
+            tmp_j = []
+            for name_param in client_params[0]:
+                inner = (client_params[i][name_param] * client_params[j][name_param]).sum()
+                norm1 = torch.linalg.vector_norm(client_params[i][name_param], ord=2)
+                norm2 = torch.linalg.vector_norm(client_params[j][name_param], ord=2)
+                # 추후 문제 있을 수 있음, 문제가 있다면 먼저 살펴보기
+                if norm1 == 0 or norm2 == 0:
+                    tmp_j.append((0.0 + 1) / 2)
+                else:
+                    tmp_j.append((((inner / (norm1 * norm2)).item()) + 1) / 2)
+            tmp_i.append(tmp_j)
+        cosine_similarity.append(tmp_i)
+
+    # layer-wise cosine average calculate
+    mean_layer_cosine = []
+    for i in range(len(cosine_similarity)):
+        mean = []
+        for k in range(layer):
+            layer_mean = 0.0
+            for j in range(len(cosine_similarity)):
+                layer_mean += cosine_similarity[i][j][k]
+            mean.append(layer_mean / len(cosine_similarity))
+        mean_layer_cosine.append(mean)
+
+    # aggregation weights calculate
+    agg_weights = [[0] * layer for _ in range(len(gradients))]
+    for i in range(layer):
+        layer_sum = 0
+        for j in range(len(gradients)):
+            layer_sum += mean_layer_cosine[j][i]
+        for j in range(len(gradients)):
+            agg_weights[j][i] = mean_layer_cosine[j][i] / layer_sum
+
+    return agg_weights
+
+def ll_model_cosine(central_node, client_params):
+    global_model = copy.deepcopy(central_node.model.state_dict())
+
+    # local gradients calculate
+    gradients = []
+    for i in range(len(client_params)):
+        param = copy.deepcopy(global_model)
+        for name_param in param:
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # gradients concatenate
+    flatted_gradients = []
+    for i in range(len(gradients)):
+        tmp = None
+        for name_param in gradients[i]:
+            if tmp == None:
+                tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
+            else:
+                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
+        flatted_gradients.append(tmp)
+
+    # local-local model-wise gradients cosine similarity calculate & normalize
+    cosine_similarity = []
+    for i in range(len(client_params)):
+        tmp_i = []
+        for j in range(len(client_params)):
+            inner = (flatted_gradients[i] * flatted_gradients[j]).sum()
+            norm1 = torch.linalg.vector_norm(flatted_gradients[i], ord=2)
+            norm2 = torch.linalg.vector_norm(flatted_gradients[j], ord=2)
+            # 추후 문제 있을 수 있음, 문제가 있다면 먼저 살펴보기
+            if norm1 == 0 or norm2 == 0:
+                tmp_i.append((0.0 + 1) / 2)
+            else:
+                tmp_i.append((((inner / (norm1 * norm2)).item()) + 1) / 2)
+        cosine_similarity.append(tmp_i)
+
+    # average cosine similarity calculate
+    mean_model_cosine = []
+    for i in range(len(gradients)):
+        mean = 0.0
+        for j in range(len(gradients)):
+            mean += cosine_similarity[i][j]
+        mean_model_cosine.append(mean / len(gradients))
+
+    # aggregation weights calculate
+    mean_model_cosine = torch.tensor(mean_model_cosine)
+    agg_weights = mean_model_cosine / sum(mean_model_cosine)
+
+    return agg_weights
+
+def gl_model_output_proxy(central_node, client_params):
+    # proxy data
+    test_loader = central_node.validate_set_noshuffle
+
+    # global model output with proxy data
+    global_output = []
+    central_node.model.cuda().eval()
+    with torch.no_grad():
+        for idx, (data, target) in enumerate(test_loader):
+            data, target = data.cuda(), target.cuda()
+            output = central_node.model(data)
+            for i in range(len(output)):
+                global_output.append(output[i])
+
+    # local model output with proxy data
+    local_output = []
+    for i in range(len(client_params)):
+        model = copy.deepcopy(central_node.model)
+        model.load_state_dict(client_params[i])
+        model.cuda().eval()
+        tmp = []
+        with torch.no_grad():
+            for idx, (data, target) in enumerate(test_loader):
+                data, target = data.cuda(), target.cuda()
+                output = model(data)
+                for j in range(len(output)):
+                    tmp.append(output[j])
+        local_output.append(tmp)
+
+    # global-local output distance calculate
+    output_distance = []
+    for i in range(len(client_params)):
+        tmp = 0.0
+        for j in range(len(global_output)):
+            tmp += torch.linalg.vector_norm(global_output[j] - local_output[i][j], ord=2)
+        output_distance.append((tmp / len(global_output)).item())
+
+    # aggregation weights calculate
+    output_distance = torch.tensor(output_distance)
+    agg_weights = (1 / output_distance) / sum(1 / output_distance)
+
+    return agg_weights
+
+def gl_model_output_snd(central_node, client_params):
+    # standard normal distribution noise
+    test_loader = central_node.validate_set_noshuffle
+    snd = torch.normal(0, 1, size=(len(test_loader.dataset), 3, 32, 32))
+
+    # global model output with standard normal distribution noise
+    global_output = []
+    central_node.model.cuda().eval()
+    with torch.no_grad():
+        data = snd.cuda()
+        output = central_node.model(data)
+        for i in range(len(output)):
+            global_output.append(output[i])
+
+    # local model output with standard normal distribution noise
+    local_output = []
+    for i in range(len(client_params)):
+        model = copy.deepcopy(central_node.model)
+        model.load_state_dict(client_params[i])
+        model.cuda().eval()
+        tmp = []
+        with torch.no_grad():
+            data = snd.cuda()
+            output = model(data)
+            for j in range(len(output)):
+                tmp.append(output[j])
+        local_output.append(tmp)
+
+    # global-local output distance calculate
+    output_distance = []
+    for i in range(len(client_params)):
+        tmp = 0.0
+        for j in range(len(global_output)):
+            tmp += torch.linalg.vector_norm(global_output[j] - local_output[i][j], ord=2)
+        output_distance.append((tmp / len(global_output)).item())
+
+    # aggregation weights calculate
+    output_distance = torch.tensor(output_distance)
+    agg_weights = (1 / output_distance) / sum(1 / output_distance)
+
+    return agg_weights
+
+def ll_model_output_proxy(central_node, client_params):
+    # proxy data
+    test_loader = central_node.validate_set_noshuffle
+
+    # local model output with proxy data
+    local_output = []
+    for i in range(len(client_params)):
+        model = copy.deepcopy(central_node.model)
+        model.load_state_dict(client_params[i])
+        model.cuda().eval()
+        tmp = []
+        with torch.no_grad():
+            for idx, (data, target) in enumerate(test_loader):
+                data, target = data.cuda(), target.cuda()
+                output = model(data)
+                for j in range(len(output)):
+                    tmp.append(output[j])
+        local_output.append(tmp)
+
+    # local-local output distance calculate
+    output_distance = []
+    for i in range(len(client_params)):
+        tmp_i = 0.0
+        for j in range(len(client_params)):
+            tmp_j = 0.0
+            for k in range(len(local_output)):
+                tmp_j += torch.linalg.vector_norm(local_output[i][k] - local_output[j][k], ord=2)
+            tmp_j = (tmp_j / len(local_output)).item()
+            tmp_i += tmp_j
+        output_distance.append(tmp_i / len(client_params))
+
+    # aggregation weights calculate
+    output_distance = torch.tensor(output_distance)
+    agg_weights = (1 / output_distance) / sum(1 / output_distance)
+
+    return agg_weights
+
+def ll_model_output_snd(central_node, client_params):
+    # standard normal distribution noise
+    test_loader = central_node.validate_set_noshuffle
+    snd = torch.normal(0, 1, size=(len(test_loader.dataset), 3, 32, 32))
+
+    # local model output with standard normal distribution noise
+    local_output = []
+    for i in range(len(client_params)):
+        model = copy.deepcopy(central_node.model)
+        model.load_state_dict(client_params[i])
+        model.cuda().eval()
+        tmp = []
+        with torch.no_grad():
+            data = snd.cuda()
+            output = model(data)
+            for j in range(len(output)):
+                tmp.append(output[j])
+        local_output.append(tmp)
+
+    # local-local output distance calculate
+    output_distance = []
+    for i in range(len(client_params)):
+        tmp_i = 0.0
+        for j in range(len(client_params)):
+            tmp_j = 0.0
+            for k in range(len(local_output)):
+                tmp_j += torch.linalg.vector_norm(local_output[i][k] - local_output[j][k], ord=2)
+            tmp_j = (tmp_j / len(local_output)).item()
+            tmp_i += tmp_j
+        output_distance.append(tmp_i / len(client_params))
+
+    # aggregation weights calculate
+    output_distance = torch.tensor(output_distance)
+    agg_weights = (1 / output_distance) / sum(1 / output_distance)
+
+    return agg_weights
+
+def model_acc_proxy(central_node, client_params):
+    # proxy data
+    test_loader = central_node.validate_set_noshuffle
+
+    # local model acc with proxy data
+    local_acc = []
+    for i in range(len(client_params)):
+        model = copy.deepcopy(central_node.model)
+        model.load_state_dict(client_params[i])
+        model.cuda().eval()
+        correct = 0.0
+        with torch.no_grad():
+            for idx, (data, target) in enumerate(test_loader):
+                data, target = data.cuda(), target.cuda()
+                output = model(data)
+                pred = output.argmax(dim=1)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            acc = correct / len(test_loader.dataset)
+        local_acc.append(acc)
+
+    # aggregation weights calculate
+    local_acc = torch.tensor(local_acc)
+    agg_weights = local_acc / sum(local_acc)
+
+    return agg_weights
+
+def model_class(central_node, client_params, data, select_list):
+    # calculate number of class per client
+    class_per_client = []
+    np.set_printoptions(precision=6, suppress=True)
+    for i in select_list:
+        num_class = 0
+        for j in range(len(data.proportion[i])):
+            if data.proportion[i][j] > 0:
+                num_class += 1
+        class_per_client.append(num_class)
+    print(class_per_client)
+
+    # calculate aggregation weights
+    class_per_client = torch.tensor(class_per_client)
+    agg_weights = class_per_client / sum(class_per_client)
+    print(agg_weights)
+    return agg_weights
+
+##############################################################################
 # fedlaw function
 ##############################################################################
 
@@ -103,7 +744,7 @@ def fedlaw_optimization(args, size_weights, parameters, central_node):
         central_node.model.train()
         for epoch in range(args.server_epochs): 
             # the training data is the small dataset on the server
-            train_loader = central_node.validate_set 
+            train_loader = central_node.validate_set
             for itr, (data, target) in enumerate(train_loader):
                 for i in range(cohort_size):
                     if i == 0:

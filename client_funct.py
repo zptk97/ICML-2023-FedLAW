@@ -23,6 +23,9 @@ def Client_update(args, client_nodes, central_node):
     '''
     client update functions
     '''
+    # 지금은 모든 client에 distribute하고 모든 client에서 학습 중
+    # client 수가 많아지면 분명 학습 시간에 큰 문제가 있을 것
+    # 실험을 위해 이렇게 한 것 같은데, 추후 빠른 버전을 만들던가 해야할 듯
     # clients receive the server model 
     client_nodes = receive_server_model(args, client_nodes, central_node)
 
@@ -147,3 +150,64 @@ def client_feddyn(global_model_vector, args, node, loss = 0.0):
         node.optimizer.step()
 
     return loss/len(train_loader)
+
+##############################################################################
+# Propose client function
+##############################################################################
+
+def receive_server_model_overlap(args, client_nodes, central_node, previous_select_list, data, gamma):
+    # calculate IS
+    proportion = data.proportion
+    IS = []
+    for m in range(len(proportion)):
+        tmp_m = []
+        for n in previous_select_list:
+            tmp = 0
+            for i in range(10):
+                tmp += ((proportion[m][i] / sum(proportion[m])) * proportion[n][i])
+            tmp_m.append(tmp)
+        IS.append(tmp_m + (np.average(tmp_m) / 10))
+
+    # calculate aggregation weight from IS
+    agg_weights_for_client = []
+    for i in range(len(client_nodes)):
+        tmp = []
+        for j in range(len(previous_select_list)):
+            tmp.append((1 / IS[i][j]) / sum(1 / IS[i]))
+        agg_weights_for_client.append(tmp)
+
+    # distribute different model to each client
+    for i in range(len(client_nodes)):
+        distribute_params = copy.deepcopy(central_node.model.state_dict())
+        for name_param in distribute_params:
+            param = torch.zeros_like(distribute_params[name_param])
+            j = 0
+            for idx in previous_select_list:
+                param += copy.deepcopy(client_nodes[idx].model.state_dict()[name_param]) * agg_weights_for_client[i][j] * gamma
+                j += 1
+            distribute_params[name_param] = param
+        client_nodes[i].model.load_state_dict(copy.deepcopy(distribute_params))
+
+    return client_nodes
+
+def Client_update_overlap(args, client_nodes, central_node, previous_select_list, data, gamma):
+    '''
+    client update functions with overlap class method
+    '''
+    # clients receive the server model
+    client_nodes = receive_server_model_overlap(args, client_nodes, central_node, previous_select_list, data, gamma)
+
+    # update the global model
+    if args.client_method == 'local_train':
+        client_losses = []
+        for i in range(len(client_nodes)):
+            epoch_losses = []
+            for epoch in range(args.E):
+                loss = client_localTrain(args, client_nodes[i])
+                epoch_losses.append(loss)
+            client_losses.append(sum(epoch_losses)/len(epoch_losses))
+            train_loss = sum(client_losses)/len(client_losses)
+    else:
+        raise ValueError('Undefined server method...')
+
+    return client_nodes, train_loss

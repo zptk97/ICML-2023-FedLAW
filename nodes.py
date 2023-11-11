@@ -24,7 +24,7 @@ class Node(object):
 
         if args.iid == 1 or num_id == -1:
             # for the server, use the validate_set as the training data, and use local_data for testing
-            self.local_data, self.validate_set = self.train_val_split_forServer(local_data.indices, train_set, self.valid_ratio, self.num_classes)
+            self.local_data, self.validate_set, self.validate_set_noshuffle = self.train_val_split_forServer(local_data.indices, train_set, self.valid_ratio, self.num_classes)
         else:
             self.local_data, self.validate_set = self.train_val_split(local_data, train_set, self.valid_ratio)
 
@@ -106,8 +106,10 @@ class Node(object):
                                   batch_size=self.args.batchsize, num_workers=0, shuffle=True)
         test_loader = DataLoader(DatasetSplit(train_set, idxs_test),
                                  batch_size=self.args.validate_batchsize,  num_workers=0, shuffle=True)
+        test_loader_noshuflle = DataLoader(DatasetSplit(train_set, idxs_test),
+                                 batch_size=self.args.validate_batchsize, num_workers=0, shuffle=False)
 
-        return train_loader, test_loader
+        return train_loader, test_loader, test_loader_noshuflle
 
 
 # Tools for long-tailed functions

@@ -10,6 +10,11 @@ if __name__ == '__main__':
 
     args = args_parser()
 
+    print(args)
+    f = open("output/" + args.exp_name + "_args.txt", 'w')
+    f.write(str(args))
+    f.close()
+
     # Set random seeds
     setup_seed(args.random_seed)
 
@@ -70,3 +75,5 @@ if __name__ == '__main__':
             final_test_acc_recorder.update(acc)
 
     print(args.server_method + args.client_method + ', final_testacc is ', final_test_acc_recorder.value())
+    np.save("output/" + args.exp_name + "_final_acc.npy", np.array(final_test_acc_recorder.value()))
+    np.save("output/" + args.exp_name + "_acc.npy", np.array(test_acc_recorder))

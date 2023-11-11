@@ -12,8 +12,6 @@ if __name__ == '__main__':
 
     args = args_parser()
 
-    args.server_method = 'fedlaw'
-
     print(args)
     f = open("output/" + args.exp_name + "_args.txt", 'w')
     f.write(str(args))
@@ -37,7 +35,6 @@ if __name__ == '__main__':
         sample_size.append(len(data.train_loader[i]))
     size_weights = [i/sum(sample_size) for i in sample_size]
 
-
     # Initialize the central node
     # num_id equals to -1 stands for central node
     central_node = Node(-1, data.test_loader[0], data.test_set, args)
@@ -54,10 +51,17 @@ if __name__ == '__main__':
     test_acc_recorder = []
     gamma_recorder = []
     optimized_weights_recorder = []
+    previous_select_list = None
     for rounds in range(args.T):
         print('===============Stage 1 The {:d}-th round==============='.format(rounds + 1))
         lr_scheduler(rounds, client_nodes, args)
 
+        # overlap class between client
+        if args.various_distribute == 1:
+            if rounds == 0:
+                client_nodes, train_loss = Client_update(args, client_nodes, central_node)
+            else:
+                client_nodes, train_loss = Client_update_overlap(args, client_nodes, central_node, previous_select_list, data, gamma)
         client_nodes, train_loss = Client_update(args, client_nodes, central_node)
         avg_client_acc = Client_validate(args, client_nodes)
         print('fedlaw, averaged clients acc is ', avg_client_acc)
@@ -67,18 +71,19 @@ if __name__ == '__main__':
             select_list = [idx for idx in range(len(client_nodes))]
         else:
             select_list = generate_selectlist(client_nodes, args.select_ratio)
-        
+        previous_select_list = select_list
         # FedLAW server update
         agg_weights, client_params = receive_client_models(args, client_nodes, select_list, size_weights)
-        gamma, optmized_weights = fedlaw_optimization(args, agg_weights, client_params, central_node)
-        central_node = fedlaw_generate_global_model(gamma, optmized_weights, client_params, central_node)
+        gamma, agg_weights = proposed_optimization(args, agg_weights, client_params, central_node, data, select_list)
+        print("gamma : ", gamma)
+        print("aggregation weights : ", agg_weights)
+        central_node = proposed_generate_global_model(args, gamma ,agg_weights, client_params, central_node)
         acc = validate(args, central_node, which_dataset = 'local')
-        print('gamma ', gamma)
-        print('optmized_weights', optmized_weights)
-        print('fedlaw, global model test acc is ', acc)
+        # print('optmized_weights', optmized_weights)
+        print(args.server_method + ' global model test acc is ', acc)
         test_acc_recorder.append(acc)
-        gamma_recorder.append(gamma.cpu().data)
-        optimized_weights_recorder.append(optmized_weights)
+        gamma_recorder.append(gamma)
+        optimized_weights_recorder.append(np.array(agg_weights))
         # Final acc recorder
         if rounds >= args.T - 10:
             final_test_acc_recorder.update(acc)

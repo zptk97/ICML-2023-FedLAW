@@ -148,7 +148,7 @@ def lr_scheduler(rounds, node_list, args):
         for i in range(len(node_list)):
             node_list[i].args.lr = args.lr
             node_list[i].optimizer.param_groups[0]['lr'] = args.lr
-    # print('Learning rate={:.4f}'.format(args.lr))
+    print('Learning rate={:.4f}'.format(args.lr))
 
 class PerturbedGradientDescent(Optimizer):
     def __init__(self, params, lr=0.01, mu=0.0):

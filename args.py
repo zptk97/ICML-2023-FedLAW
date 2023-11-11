@@ -13,7 +13,7 @@ def args_parser():
                         help="batchsize")
     parser.add_argument('--validate_batchsize', type=int, default=128, 
                         help="batchsize")
-    parser.add_argument('--dirichlet_alpha', type=float, default=0.5, 
+    parser.add_argument('--dirichlet_alpha', type=float, default=0.1,
                     help="dirichlet_alpha")
     parser.add_argument('--dirichlet_alpha2', type=float, default=False, 
                     help="dirichlet_alpha2")
@@ -29,7 +29,7 @@ def args_parser():
                         help="Number of nodes")
     parser.add_argument('--T', type=int, default=200,  # 100 
                         help="Number of communication rounds")
-    parser.add_argument('--E', type=int, default=1, # 3
+    parser.add_argument('--E', type=int, default=3, # 3
                         help="Number of local epochs: E")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help="Type of algorithms:{mnist, cifar10,cifar100, fmnist}") 
@@ -58,6 +58,10 @@ def args_parser():
                         help='none or swa for FedLAW')
     parser.add_argument('--fedadam_server_lr', type=float, default=1.0,
                         help="server_lr for FedAdam")
+    parser.add_argument('--fixed_gamma', type=float, default=False,
+                        help="use fixed gamma")
+    parser.add_argument('--various_distribute', type=int, default=0,
+                        help="distribute differenct model to each client considering overlap class")
                         
     # Client function
     parser.add_argument('--client_method', type=str, default='local_train',

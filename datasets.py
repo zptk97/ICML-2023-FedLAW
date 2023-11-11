@@ -40,7 +40,7 @@ class Data(object):
             )
 
             self.train_set = torchvision.datasets.CIFAR10(
-                root="/home/Dataset/cifar/", train=True, download=False, transform=tra_transformer
+                root="/home/Dataset/cifar/", train=True, download=True, transform=tra_transformer
             )
             if args.iid == 0:  # noniid
                 random_state = np.random.RandomState(int(args.random_seed))
@@ -144,16 +144,19 @@ def build_non_iid_by_dirichlet_hybrid(
     random_state = np.random.RandomState(0), dataset = 0, non_iid_alpha1 = 10, non_iid_alpha2 = 1, num_classes = 10, num_indices = 60000, n_workers = 10
 ):
 
+    # class 별로 dict로 나누고 랜덤으로 섞기
     indicesbyclass = {}
     for i in range(num_classes):
         indicesbyclass[i] = []
-    
+
     for idx, target in enumerate(dataset.targets):
         indicesbyclass[int(target)].append(idx)
-    
+
     for i in range(num_classes):
         random_state.shuffle(indicesbyclass[i])
-    
+
+    # 반은 class balanced 하게 생성, 나머지는 imbalanced 하게 생성
+    # class balanced 하게 가져가고 남은 것들 중에 가져가려고 diag_mat 사용
     partition = random_state.dirichlet(np.repeat(non_iid_alpha1, n_workers), num_classes).transpose()
 
     partition2 = random_state.dirichlet(np.repeat(non_iid_alpha2, n_workers/2), num_classes).transpose()
@@ -168,10 +171,12 @@ def build_non_iid_by_dirichlet_hybrid(
 
     client_partition = np.vstack((new_partition1, new_partition2))
 
+    # np.set_printoptions(precision=6, suppress=True)
+
     for i in range(len(client_partition)):
         for j in range(len(client_partition[i])):
             client_partition[i][j] = int(round(client_partition[i][j]*len(indicesbyclass[j])))
-    
+
     client_partition_index = copy.deepcopy(client_partition)
     for i in range(len(client_partition)):
         for j in range(len(client_partition[i])):
@@ -181,7 +186,7 @@ def build_non_iid_by_dirichlet_hybrid(
                 client_partition_index[i][j] = len(indicesbyclass[j])
             else:
                 client_partition_index[i][j] = client_partition_index[i-1][j] + client_partition_index[i][j]
-            
+
     dict_users = {}
     for i in range(n_workers):
         dict_users[i] = []
