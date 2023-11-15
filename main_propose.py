@@ -51,6 +51,9 @@ if __name__ == '__main__':
     test_acc_recorder = []
     gamma_recorder = []
     optimized_weights_recorder = []
+    all_distance_recorder = []
+    participation_distance_recorder = []
+    proportion_data_recorder = []
     previous_select_list = None
     for rounds in range(args.T):
         print('===============Stage 1 The {:d}-th round==============='.format(rounds + 1))
@@ -72,18 +75,28 @@ if __name__ == '__main__':
         else:
             select_list = generate_selectlist(client_nodes, args.select_ratio)
         previous_select_list = select_list
-        # FedLAW server update
+
+        # Proposed server update
         agg_weights, client_params = receive_client_models(args, client_nodes, select_list, size_weights)
+        # gradients distance calculate for analysis
+        # if "gradients" in args.server_method:
+        all_distance, participation_distance = get_gradients(args, central_node, client_nodes, select_list)
         gamma, agg_weights = proposed_optimization(args, agg_weights, client_params, central_node, data, select_list)
         print("gamma : ", gamma)
         print("aggregation weights : ", agg_weights)
-        central_node = proposed_generate_global_model(args, gamma ,agg_weights, client_params, central_node)
+        # participate data proportion
+        proportion_data = get_proportion_data(args, agg_weights, select_list, data)
+        central_node = proposed_generate_global_model(args, gamma, agg_weights, client_params, central_node)
         acc = validate(args, central_node, which_dataset = 'local')
         # print('optmized_weights', optmized_weights)
         print(args.server_method + ' global model test acc is ', acc)
         test_acc_recorder.append(acc)
         gamma_recorder.append(gamma)
         optimized_weights_recorder.append(np.array(agg_weights))
+        # if "gradients" in args.server_method:
+        all_distance_recorder.append(all_distance)
+        participation_distance_recorder.append(participation_distance)
+        proportion_data_recorder.append(proportion_data)
         # Final acc recorder
         if rounds >= args.T - 10:
             final_test_acc_recorder.update(acc)
@@ -93,3 +106,7 @@ if __name__ == '__main__':
     np.save("output/"+args.exp_name+"_acc.npy", np.array(test_acc_recorder))
     np.save("output/" + args.exp_name + "_gamma.npy", np.array(gamma_recorder))
     np.save("output/" + args.exp_name + "_optimized_weights.npy", np.array(optimized_weights_recorder))
+    np.save("output/" + args.exp_name + "_proportion_data.npy", np.array(proportion_data_recorder))
+    # if "gradients" in args.server_method:
+    np.save("output/" + args.exp_name + "_all_distance.npy", np.array(all_distance_recorder))
+    np.save("output/" + args.exp_name + "_participation_distance.npy", np.array(participation_distance_recorder))
