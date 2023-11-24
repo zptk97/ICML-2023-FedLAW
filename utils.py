@@ -268,115 +268,199 @@ def testloss_with_param(args, node, param, which_dataset='validate'):
 ##############################################################################
 
 # get gradients of each client
-def get_gradients(args, central_node, clients_nodes, select_list):
-    # 일단은 gradients 자체만 구해서 리턴 후 저장해보자
-    # 만약 크기가 너무 커서 비효율적이라면 필요한 계산까지 해서 저장해보자
-    # 20 client 200 round 면 4GB 인듯 너무 큼
-    # 여기서 계산까지해서 보내자
+def get_gradients(args, central_node, client_params, select_list, fedavg_agg_weights):
     global_model = copy.deepcopy(central_node.model.state_dict())
 
     # local gradients calculate
-    all_gradients = []
-    participation_gradients = []
-    for i in range(len(clients_nodes)):
+    gradients = []
+    for i in range(len(client_params)):
         param = copy.deepcopy(global_model)
-        client_param = copy.deepcopy(clients_nodes[i].model.state_dict())
         for name_param in param:
-            param[name_param] = global_model[name_param] - client_param[name_param]
-        # get gradients of all clients
-        all_gradients.append(copy.deepcopy(param))
-        # # get gradients of participation clients
-        # if i in select_list:
-        #     participation_gradients.append(copy.deepcopy(param))
+            param[name_param] = global_model[name_param] - client_params[i][name_param]
+        gradients.append(copy.deepcopy(param))
+
+    # FedAvg AW averaged local gradients
+    for i in range(len(gradients)):
+        if i == 0:
+            param = copy.deepcopy(gradients[i])
+            for name_param in param:
+                param[name_param] = param[name_param] * fedavg_agg_weights[i]
+        else:
+            for name_param in param:
+                param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_agg_weights[i])
+        # for name_param in param:
+        #     param[name_param] = param[name_param] / len(gradients)
+    avg_gradients = copy.deepcopy(param)
 
     # gradients concatenate
-    all_flatted_gradients = []
-    participation_flatted_gradients = []
-    for i in range(len(all_gradients)):
+    flatted_gradients = []
+    for i in range(len(gradients)):
         tmp = None
-        for name_param in all_gradients[i]:
+        for name_param in gradients[i]:
             if tmp == None:
-                tmp = torch.flatten(copy.deepcopy(all_gradients[i][name_param]))
+                tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
             else:
-                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(all_gradients[i][name_param]))))
-        all_flatted_gradients.append(tmp)
-        # if i in select_list:
-        #     participation_flatted_gradients.append(tmp)
+                tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
+        flatted_gradients.append(tmp)
+    tmp = None
+    for name_param in avg_gradients:
+        if tmp == None:
+            tmp = torch.flatten(copy.deepcopy(avg_gradients[name_param]))
+        else:
+            tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(avg_gradients[name_param]))))
+    flatted_avg_gradients = copy.deepcopy(tmp)
 
-    # calculate gl model-wise distance
-    all_gl_model_distance = []
-    participation_gl_model_distance = []
-    for i in range(len(all_flatted_gradients)):
-        distance = torch.linalg.vector_norm(all_flatted_gradients[i], ord=2).item()
+    # GL model-wise gradients distance calculate
+    gl_model_gradients_distance = []
+    for i in range(len(gradients)):
+        distance = torch.linalg.vector_norm(flatted_gradients[i], ord=2).item()
         distance = np.array(distance)
-        all_gl_model_distance.append(distance)
-        if i in select_list:
-            participation_gl_model_distance.append(distance)
+        gl_model_gradients_distance.append(distance)
 
-    # calculate gl layer-wise distance
-    all_gl_layer_distance = []
-    participation_gl_layer_distance = []
-    for i in range(len(all_gradients)):
+    # GL layer-wise gradients distance calculate
+    gl_layer_gradients_distance = []
+    for i in range(len(gradients)):
         tmp = []
-        for name_param in all_gradients[i]:
-            layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param], ord=2).item()
+        for name_param in gradients[i]:
+            layer_distance = torch.linalg.vector_norm(gradients[i][name_param], ord=2).item()
             tmp.append(layer_distance)
         tmp = np.average(tmp)
-        all_gl_layer_distance.append(tmp)
-        if i in select_list:
-            participation_gl_layer_distance.append(tmp)
+        gl_layer_gradients_distance.append(tmp)
 
-    # calculate ll model-wise distance
-    all_ll_model_distance = []
-    participation_ll_model_distance = []
-    for i in range(len(all_flatted_gradients)):
+    # LL model-wise gradients distance calculate
+    ll_model_gradients_distance = []
+    for i in range(len(gradients)):
+        distance = torch.linalg.vector_norm(flatted_avg_gradients - flatted_gradients[i], ord=2).item()
+        distance = np.array(distance)
+        ll_model_gradients_distance.append(distance)
+
+    # LL layer-wise gradients distance calculate
+    ll_layer_gradients_distance = []
+    for i in range(len(gradients)):
         tmp = []
-        participation_tmp = []
-        for j in range(len(all_flatted_gradients)):
-            all_model_distance = torch.linalg.vector_norm(all_flatted_gradients[i] - all_flatted_gradients[j],
-                                                          ord=2).item()
-            tmp.append(all_model_distance)
-            if j in select_list:
-                participation_model_distance = torch.linalg.vector_norm(
-                    all_flatted_gradients[i] - all_flatted_gradients[j], ord=2).item()
-                participation_tmp.append(participation_model_distance)
-        tmp = np.array(tmp)
-        all_ll_model_distance.append(tmp)
-        if i in select_list:
-            participation_tmp = np.array(participation_tmp)
-            participation_ll_model_distance.append(participation_tmp)
+        for name_param in gradients[i]:
+            layer_distance = torch.linalg.vector_norm(avg_gradients[name_param] - gradients[i][name_param], ord=2).item()
+            tmp.append(layer_distance)
+        tmp = np.average(tmp)
+        ll_layer_gradients_distance.append(tmp)
 
-    # calculate ll layer-wise distance
-    all_ll_layer_distance = []
-    participation_ll_layer_distance = []
-    for i in range(len(all_gradients)):
-        tmp = []
-        part_tmp = []
-        for j in range(len(all_gradients)):
-            tmp_layer = []
-            part_tmp_layer = []
-            for name_param in all_gradients[i]:
-                layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param] - all_gradients[j][name_param],
-                                                          ord=2).item()
-                tmp_layer.append(layer_distance)
-                if j in select_list:
-                    part_layer_distance = torch.linalg.vector_norm(
-                        all_gradients[i][name_param] - all_gradients[j][name_param], ord=2).item()
-                    part_tmp_layer.append(part_layer_distance)
-            tmp_layer = np.average(tmp_layer)
-            tmp.append(tmp_layer)
-            if j in select_list:
-                part_tmp_layer = np.average(part_tmp_layer)
-                part_tmp.append(part_tmp_layer)
-        all_ll_layer_distance.append(tmp)
-        if i in select_list:
-            participation_ll_layer_distance.append(part_tmp)
+    # save in dict
+    gradients_distance = {'gl_model': np.array(gl_model_gradients_distance), 'gl_layer': np.array(gl_layer_gradients_distance),
+                          'll_model': np.array(ll_model_gradients_distance), 'll_layer': np.array(ll_layer_gradients_distance)}
+    return gradients_distance
 
-    all_distance = {'gl_model' : np.array(all_gl_model_distance), 'gl_layer' : np.array(all_gl_layer_distance),
-                    'll_model' : np.array(all_ll_model_distance), 'll_layer' : np.array(all_ll_layer_distance)}
-    participation_distance = {'gl_model': np.array(participation_gl_model_distance), 'gl_layer': np.array(participation_gl_layer_distance),
-                    'll_model': np.array(participation_ll_model_distance), 'll_layer': np.array(participation_ll_layer_distance)}
-    return all_distance, participation_distance
+#
+# # get gradients of each client
+# def get_gradients(args, central_node, clients_nodes, select_list, fedavg_agg_weights):
+#     # 일단은 gradients 자체만 구해서 리턴 후 저장해보자
+#     # 만약 크기가 너무 커서 비효율적이라면 필요한 계산까지 해서 저장해보자
+#     # 20 client 200 round 면 4GB 인듯 너무 큼
+#     # 여기서 계산까지해서 보내자
+#     global_model = copy.deepcopy(central_node.model.state_dict())
+#
+#     # local gradients calculate
+#     all_gradients = []
+#     participation_gradients = []
+#     for i in range(len(clients_nodes)):
+#         param = copy.deepcopy(global_model)
+#         client_param = copy.deepcopy(clients_nodes[i].model.state_dict())
+#         for name_param in param:
+#             param[name_param] = global_model[name_param] - client_param[name_param]
+#         # get gradients of all clients
+#         all_gradients.append(copy.deepcopy(param))
+#         # # get gradients of participation clients
+#         # if i in select_list:
+#         #     participation_gradients.append(copy.deepcopy(param))
+#
+#     # gradients concatenate
+#     all_flatted_gradients = []
+#     participation_flatted_gradients = []
+#     for i in range(len(all_gradients)):
+#         tmp = None
+#         for name_param in all_gradients[i]:
+#             if tmp == None:
+#                 tmp = torch.flatten(copy.deepcopy(all_gradients[i][name_param]))
+#             else:
+#                 tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(all_gradients[i][name_param]))))
+#         all_flatted_gradients.append(tmp)
+#         # if i in select_list:
+#         #     participation_flatted_gradients.append(tmp)
+#
+#     # calculate gl model-wise distance
+#     all_gl_model_distance = []
+#     participation_gl_model_distance = []
+#     for i in range(len(all_flatted_gradients)):
+#         distance = torch.linalg.vector_norm(all_flatted_gradients[i], ord=2).item()
+#         distance = np.array(distance)
+#         all_gl_model_distance.append(distance)
+#         if i in select_list:
+#             participation_gl_model_distance.append(distance)
+#
+#     # calculate gl layer-wise distance
+#     all_gl_layer_distance = []
+#     participation_gl_layer_distance = []
+#     for i in range(len(all_gradients)):
+#         tmp = []
+#         for name_param in all_gradients[i]:
+#             layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param], ord=2).item()
+#             tmp.append(layer_distance)
+#         tmp = np.average(tmp)
+#         all_gl_layer_distance.append(tmp)
+#         if i in select_list:
+#             participation_gl_layer_distance.append(tmp)
+#
+#     # calculate ll model-wise distance
+#     all_ll_model_distance = []
+#     participation_ll_model_distance = []
+#     for i in range(len(all_flatted_gradients)):
+#         tmp = []
+#         participation_tmp = []
+#         for j in range(len(all_flatted_gradients)):
+#             all_model_distance = torch.linalg.vector_norm(all_flatted_gradients[i] - all_flatted_gradients[j],
+#                                                           ord=2).item()
+#             tmp.append(all_model_distance)
+#             if j in select_list:
+#                 participation_model_distance = torch.linalg.vector_norm(
+#                     all_flatted_gradients[i] - all_flatted_gradients[j], ord=2).item()
+#                 participation_tmp.append(participation_model_distance)
+#         tmp = np.array(tmp)
+#         all_ll_model_distance.append(tmp)
+#         if i in select_list:
+#             participation_tmp = np.array(participation_tmp)
+#             participation_ll_model_distance.append(participation_tmp)
+#
+#     # calculate ll layer-wise distance
+#     all_ll_layer_distance = []
+#     participation_ll_layer_distance = []
+#     for i in range(len(all_gradients)):
+#         tmp = []
+#         part_tmp = []
+#         for j in range(len(all_gradients)):
+#             tmp_layer = []
+#             part_tmp_layer = []
+#             for name_param in all_gradients[i]:
+#                 layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param] - all_gradients[j][name_param],
+#                                                           ord=2).item()
+#                 tmp_layer.append(layer_distance)
+#                 if j in select_list:
+#                     part_layer_distance = torch.linalg.vector_norm(
+#                         all_gradients[i][name_param] - all_gradients[j][name_param], ord=2).item()
+#                     part_tmp_layer.append(part_layer_distance)
+#             tmp_layer = np.average(tmp_layer)
+#             tmp.append(tmp_layer)
+#             if j in select_list:
+#                 part_tmp_layer = np.average(part_tmp_layer)
+#                 part_tmp.append(part_tmp_layer)
+#         all_ll_layer_distance.append(tmp)
+#         if i in select_list:
+#             participation_ll_layer_distance.append(part_tmp)
+#
+#     all_distance = {'gl_model' : np.array(all_gl_model_distance), 'gl_layer' : np.array(all_gl_layer_distance),
+#                     'll_model' : np.array(all_ll_model_distance), 'll_layer' : np.array(all_ll_layer_distance)}
+#     participation_distance = {'gl_model': np.array(participation_gl_model_distance), 'gl_layer': np.array(participation_gl_layer_distance),
+#                     'll_model': np.array(participation_ll_model_distance), 'll_layer': np.array(participation_ll_layer_distance)}
+#     return all_distance, participation_distance
+
 
 def get_proportion_data(args, agg_weights, select_list, data):
     np.set_printoptions(precision=6, suppress=True)
@@ -398,3 +482,83 @@ def get_proportion_data(args, agg_weights, select_list, data):
     return proportion_data
 
 
+def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights):
+    if "layer" in args.server_method:
+        for i in range(len(propose_agg_weights)):
+            for j in range(len(propose_agg_weights[i])):
+                if args.fusion == 1:
+                    propose_agg_weights[i][j] = propose_agg_weights[i][j] * fedavg_agg_weights[i]
+                elif args.fusion == 2:
+                    # propose_agg_weights[i][j] = propose_agg_weights[i][j] + (propose_agg_weights[i][j] * fedavg_agg_weights[i])
+                    propose_agg_weights[i][j] = propose_agg_weights[i][j] + (
+                                0.5 * fedavg_agg_weights[i])
+                else:
+                    ValueError('Undefined fusion method...')
+        for i in range(len(propose_agg_weights[0])):
+            sum_tmp = 0.0
+            for j in range(len(propose_agg_weights)):
+                sum_tmp += propose_agg_weights[j][i]
+            for j in range(len(propose_agg_weights)):
+                propose_agg_weights[j][i] = propose_agg_weights[j][i] / sum_tmp
+        agg_weights = propose_agg_weights
+    elif "model" in args.server_method:
+        if args.fusion == 1:
+            agg_weights = torch.tensor(fedavg_agg_weights) * propose_agg_weights
+        elif args.fusion == 2:
+            # agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * propose_agg_weights)
+            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 0.5)
+        else:
+            ValueError('Undefined fusion method...')
+        agg_weights = agg_weights / sum(agg_weights)
+    elif args.server_method == 'fedavg':
+        if args.fusion == 1:
+            agg_weights = torch.tensor(fedavg_agg_weights) * propose_agg_weights
+        elif args.fusion == 2:
+            # agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * propose_agg_weights)
+            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 0.5)
+        else:
+            ValueError('Undefined fusion method...')
+        agg_weights = agg_weights / sum(agg_weights)
+    else:
+        raise ValueError('Undefined server method...')
+    return agg_weights
+
+
+def agg_weights_scale(args, fedavg_agg_weights, propose_agg_weights, select_list, data):
+    # Calculate FedAvg effective training data
+    proportion = data.proportion
+    fedavg_agg_weights = np.array(fedavg_agg_weights)
+    sum_fedavg = 0.0
+    for i, idx in enumerate(select_list):
+        sum_fedavg += sum(proportion[idx]) * fedavg_agg_weights[i]
+    # Calculate Propose effective training data
+    agg_weights = np.zeros_like(fedavg_agg_weights)
+    if "layer" in args.server_method:
+        for i in range(len(propose_agg_weights)):
+            for j in range(len(propose_agg_weights[i])):
+                agg_weights[i] += propose_agg_weights[i][j]
+            agg_weights[i] = agg_weights[i] / len(propose_agg_weights[i])
+    elif "model" in args.server_method:
+        agg_weights = np.array(propose_agg_weights)
+    elif args.server_method == 'fedavg':
+        agg_weights = np.array(propose_agg_weights)
+    else:
+        raise ValueError('Undefined server method...')
+    sum_propose = 0.0
+    for i, idx in enumerate(select_list):
+        sum_propose += sum(proportion[idx]) * agg_weights[i]
+    # get scaling factor
+    scaling_factor = sum_fedavg / sum_propose
+    # get scaled proposed AW
+    if "layer" in args.server_method:
+        for i in range(len(propose_agg_weights)):
+            for j in range(len(propose_agg_weights[i])):
+                propose_agg_weights[i][j] = propose_agg_weights[i][j] * scaling_factor
+    elif "model" in args.server_method:
+        propose_agg_weights = propose_agg_weights * scaling_factor
+    elif args.server_method == 'fedavg':
+        propose_agg_weights = propose_agg_weights * scaling_factor
+    else:
+        raise ValueError('Undefined server method...')
+
+    return propose_agg_weights, scaling_factor

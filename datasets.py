@@ -54,6 +54,15 @@ class Data(object):
                 self.train_loader = groups
                 self.groups = groups
                 self.proportion = proportion
+                # np.set_printoptions(precision=6, suppress=True)
+                # print(proportion)
+                # num = []
+                # for i in range(len(proportion)):
+                #     num.append(np.sum(proportion[i]))
+                # print(num)
+                # # print(sum(num))
+                # exit()
+
             else:
                 data_num = [int(50000/node_num) for _ in range(node_num)]
                 splited_set = torch.utils.data.random_split(self.train_set, data_num)

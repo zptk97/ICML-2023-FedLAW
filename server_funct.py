@@ -93,10 +93,12 @@ def proposed_optimization(args, agg_weights, client_params, central_node, data, 
         agg_weights = gl_model_gradients_distance(central_node, client_params)
     elif args.server_method == 'll_layer_gradients_distance':
         print("local-local layer-wise gradients distance 구현")
-        agg_weights = ll_layer_gradients_distance(central_node, client_params)
+        # agg_weights = ll_layer_gradients_distance(central_node, client_params)
+        agg_weights = ll_layer_gradients_distance(central_node, client_params, agg_weights, select_list)
     elif args.server_method == 'll_model_gradients_distance':
         print("local-local model-wise gradients distance 구현")
-        agg_weights = ll_model_gradients_distance(central_node, client_params)
+        # agg_weights = ll_model_gradients_distance(central_node, client_params)
+        agg_weights = ll_model_gradients_distance(central_node, client_params, agg_weights, select_list)
     elif args.server_method == 'gl_layer_cosine':
         print("global-local layer-wise cosine 구현")
         agg_weights = gl_layer_cosine(central_node, client_params)
@@ -205,7 +207,8 @@ def gl_model_gradients_distance(central_node, client_params):
     agg_weights = (1 / model_distance) / sum(1 / model_distance)
     return agg_weights
 
-def ll_layer_gradients_distance(central_node, client_params):
+# local-local gradients들 하나의 gradeitns vector 로 합치고 이와의 차이를 이용하는 방법
+def ll_layer_gradients_distance(central_node, client_params, fedavg_weights, select_list):
     global_model = copy.deepcopy(central_node.model.state_dict())
 
     # local gradients calculate
@@ -215,6 +218,19 @@ def ll_layer_gradients_distance(central_node, client_params):
         for name_param in param:
             param[name_param] = global_model[name_param] - client_params[i][name_param]
         gradients.append(copy.deepcopy(param))
+
+    # averaged local gradients calculate
+    for i in range(len(gradients)):
+        if i == 0:
+            param = copy.deepcopy(gradients[i])
+            for name_param in param:
+                param[name_param] = param[name_param] * fedavg_weights[i]
+        else:
+            for name_param in param:
+                param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
+    # for name_param in param:
+    #     param[name_param] = param[name_param] / len(gradients)
+    avg_gradients = param
 
     # how many layer?
     layer = 0
@@ -225,36 +241,22 @@ def ll_layer_gradients_distance(central_node, client_params):
     layer_distance = []
     for i in range(len(gradients)):
         tmp_i = []
-        for j in range(len(gradients)):
-            tmp_j = []
-            for name_param in gradients[0]:
-                tmp_j.append(torch.linalg.vector_norm(gradients[i][name_param] - gradients[j][name_param], ord=2).item())
-            tmp_i.append(tmp_j)
+        for name_param in gradients[0]:
+            tmp_i.append(torch.linalg.vector_norm(avg_gradients[name_param] - gradients[i][name_param], ord=2).item())
         layer_distance.append(tmp_i)
-
-    # layer-wise distance average calculate
-    mean_layer_distance = []
-    for i in range(len(gradients)):
-        mean = []
-        for k in range(layer):
-            layer_mean = 0.0
-            for j in range(len(gradients)):
-                layer_mean += layer_distance[i][j][k]
-            mean.append(layer_mean / len(gradients))
-        mean_layer_distance.append(mean)
 
     # aggregation weights calculate
     agg_weights = [[0] * layer for _ in range(len(gradients))]
     for i in range(layer):
         layer_sum = 0
         for j in range(len(gradients)):
-            layer_sum += (1 / mean_layer_distance[j][i])
+            layer_sum += (1 / layer_distance[j][i])
         for j in range(len(gradients)):
-            agg_weights[j][i] = (1 / mean_layer_distance[j][i]) / layer_sum
+            agg_weights[j][i] = (1 / layer_distance[j][i]) / layer_sum
 
     return agg_weights
 
-def ll_model_gradients_distance(central_node, client_params):
+def ll_model_gradients_distance(central_node, client_params, fedavg_weights, select_list):
     global_model = copy.deepcopy(central_node.model.state_dict())
 
     # local gradients calculate
@@ -265,13 +267,32 @@ def ll_model_gradients_distance(central_node, client_params):
             param[name_param] = global_model[name_param] - client_params[i][name_param]
         gradients.append(copy.deepcopy(param))
 
+    # averaged local gradients calculate
+    for i in range(len(gradients)):
+        if i == 0:
+            param = copy.deepcopy(gradients[i])
+            for name_param in param:
+                param[name_param] = param[name_param] * fedavg_weights[i]
+        else:
+            for name_param in param:
+                param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
+    # for name_param in param:
+    #     param[name_param] = param[name_param] / len(gradients)
+    avg_gradients = param
+
     # gradients concatenate
+    flatted_avg_gradients = []
+    for name_param in avg_gradients:
+        if len(flatted_avg_gradients) == 0:
+            flatted_avg_gradients = torch.flatten(avg_gradients[name_param])
+        else:
+            flatted_avg_gradients = torch.cat((flatted_avg_gradients, torch.flatten(avg_gradients[name_param])))
     flatted_gradients = []
     for i in range(len(gradients)):
         tmp = None
         for name_param in gradients[i]:
             if tmp == None:
-                tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
+                tmp = torch.flatten(gradients[i][name_param])
             else:
                 tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
         flatted_gradients.append(tmp)
@@ -279,24 +300,107 @@ def ll_model_gradients_distance(central_node, client_params):
     # local-local model-wise distance calculate
     model_distance = []
     for i in range(len(gradients)):
-        tmp = []
-        for j in range(len(gradients)):
-            tmp.append(torch.linalg.vector_norm(flatted_gradients[i] - flatted_gradients[j], ord=2).item())
-        model_distance.append(tmp)
-
-    # model-wise distance average calculate
-    mean_model_distance = []
-    for i in range(len(gradients)):
-        mean = 0.0
-        for j in range(len(gradients)):
-            mean += model_distance[i][j]
-        mean_model_distance.append(mean / len(gradients))
+        model_distance.append(torch.linalg.vector_norm(flatted_avg_gradients - flatted_gradients[i], ord=2).item())
 
     # aggregation weights calculate
-    mean_model_distance = torch.tensor(mean_model_distance)
+    mean_model_distance = torch.tensor(model_distance)
     agg_weights = (1 / mean_model_distance) / sum(1 / mean_model_distance)
 
     return agg_weights
+
+# # local-local gradients distance 평균 내는 방법
+# def ll_layer_gradients_distance(central_node, client_params):
+#     global_model = copy.deepcopy(central_node.model.state_dict())
+#
+#     # local gradients calculate
+#     gradients = []
+#     for i in range(len(client_params)):
+#         param = copy.deepcopy(global_model)
+#         for name_param in param:
+#             param[name_param] = global_model[name_param] - client_params[i][name_param]
+#         gradients.append(copy.deepcopy(param))
+#
+#     # how many layer?
+#     layer = 0
+#     for i in global_model:
+#         layer += 1
+#
+#     # local-local layer-wise distance calculate
+#     layer_distance = []
+#     for i in range(len(gradients)):
+#         tmp_i = []
+#         for j in range(len(gradients)):
+#             tmp_j = []
+#             for name_param in gradients[0]:
+#                 tmp_j.append(torch.linalg.vector_norm(gradients[i][name_param] - gradients[j][name_param], ord=2).item())
+#             tmp_i.append(tmp_j)
+#         layer_distance.append(tmp_i)
+#
+#     # layer-wise distance average calculate
+#     mean_layer_distance = []
+#     for i in range(len(gradients)):
+#         mean = []
+#         for k in range(layer):
+#             layer_mean = 0.0
+#             for j in range(len(gradients)):
+#                 layer_mean += layer_distance[i][j][k]
+#             mean.append(layer_mean / len(gradients))
+#         mean_layer_distance.append(mean)
+#
+#     # aggregation weights calculate
+#     agg_weights = [[0] * layer for _ in range(len(gradients))]
+#     for i in range(layer):
+#         layer_sum = 0
+#         for j in range(len(gradients)):
+#             layer_sum += (1 / mean_layer_distance[j][i])
+#         for j in range(len(gradients)):
+#             agg_weights[j][i] = (1 / mean_layer_distance[j][i]) / layer_sum
+#
+#     return agg_weights
+#
+# def ll_model_gradients_distance(central_node, client_params):
+#     global_model = copy.deepcopy(central_node.model.state_dict())
+#
+#     # local gradients calculate
+#     gradients = []
+#     for i in range(len(client_params)):
+#         param = copy.deepcopy(global_model)
+#         for name_param in param:
+#             param[name_param] = global_model[name_param] - client_params[i][name_param]
+#         gradients.append(copy.deepcopy(param))
+#
+#     # gradients concatenate
+#     flatted_gradients = []
+#     for i in range(len(gradients)):
+#         tmp = None
+#         for name_param in gradients[i]:
+#             if tmp == None:
+#                 tmp = torch.flatten(copy.deepcopy(gradients[i][name_param]))
+#             else:
+#                 tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(gradients[i][name_param]))))
+#         flatted_gradients.append(tmp)
+#
+#     # local-local model-wise distance calculate
+#     model_distance = []
+#     for i in range(len(gradients)):
+#         tmp = []
+#         for j in range(len(gradients)):
+#             tmp.append(torch.linalg.vector_norm(flatted_gradients[i] - flatted_gradients[j], ord=2).item())
+#         model_distance.append(tmp)
+#
+#     # model-wise distance average calculate
+#     mean_model_distance = []
+#     for i in range(len(gradients)):
+#         mean = 0.0
+#         for j in range(len(gradients)):
+#             mean += model_distance[i][j]
+#         mean_model_distance.append(mean / len(gradients))
+#
+#     # aggregation weights calculate
+#     mean_model_distance = torch.tensor(mean_model_distance)
+#     agg_weights = (1 / mean_model_distance) / sum(1 / mean_model_distance)
+#
+#     return agg_weights
 
 def gl_layer_cosine(central_node, client_params):
     global_model = copy.deepcopy(central_node.model.state_dict())

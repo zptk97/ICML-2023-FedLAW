@@ -51,13 +51,17 @@ if __name__ == '__main__':
     test_acc_recorder = []
     gamma_recorder = []
     optimized_weights_recorder = []
-    all_distance_recorder = []
-    participation_distance_recorder = []
+    gradients_distance_recorder = []
     proportion_data_recorder = []
     previous_select_list = None
+    server_method = args.server_method
     for rounds in range(args.T):
         print('===============Stage 1 The {:d}-th round==============='.format(rounds + 1))
         lr_scheduler(rounds, client_nodes, args)
+        # if rounds < 5:
+        #     args.server_method = 'fedavg'
+        # else:
+        #     args.server_method = server_method
 
         # overlap class between client
         if args.various_distribute == 1:
@@ -80,13 +84,22 @@ if __name__ == '__main__':
         agg_weights, client_params = receive_client_models(args, client_nodes, select_list, size_weights)
         # gradients distance calculate for analysis
         # if "gradients" in args.server_method:
-        all_distance, participation_distance = get_gradients(args, central_node, client_nodes, select_list)
+        fedavg_agg_weights = agg_weights
         gamma, agg_weights = proposed_optimization(args, agg_weights, client_params, central_node, data, select_list)
+
+        if args.fusion != 0 and args.server_method != 'fedavg':
+            agg_weights = agg_weights_fusion(args, fedavg_agg_weights, agg_weights)
+        # agg_weights, gamma = agg_weights_scale(args, fedavg_agg_weights, agg_weights, select_list, data)
+
         print("gamma : ", gamma)
         print("aggregation weights : ", agg_weights)
+        # get gradients factor
+        gradients_distance = get_gradients(args, central_node, client_params, select_list, fedavg_agg_weights)
         # participate data proportion
         proportion_data = get_proportion_data(args, agg_weights, select_list, data)
-        central_node = proposed_generate_global_model(args, gamma, agg_weights, client_params, central_node)
+        FedLAW_gamma = 1.0
+
+        central_node = proposed_generate_global_model(args, FedLAW_gamma, agg_weights, client_params, central_node)
         acc = validate(args, central_node, which_dataset = 'local')
         # print('optmized_weights', optmized_weights)
         print(args.server_method + ' global model test acc is ', acc)
@@ -94,8 +107,7 @@ if __name__ == '__main__':
         gamma_recorder.append(gamma)
         optimized_weights_recorder.append(np.array(agg_weights))
         # if "gradients" in args.server_method:
-        all_distance_recorder.append(all_distance)
-        participation_distance_recorder.append(participation_distance)
+        gradients_distance_recorder.append(gradients_distance)
         proportion_data_recorder.append(proportion_data)
         # Final acc recorder
         if rounds >= args.T - 10:
@@ -108,5 +120,4 @@ if __name__ == '__main__':
     np.save("output/" + args.exp_name + "_optimized_weights.npy", np.array(optimized_weights_recorder))
     np.save("output/" + args.exp_name + "_proportion_data.npy", np.array(proportion_data_recorder))
     # if "gradients" in args.server_method:
-    np.save("output/" + args.exp_name + "_all_distance.npy", np.array(all_distance_recorder))
-    np.save("output/" + args.exp_name + "_participation_distance.npy", np.array(participation_distance_recorder))
+    np.save("output/" + args.exp_name + "_gradients_distance.npy", np.array(gradients_distance_recorder))

@@ -27,9 +27,9 @@ def args_parser():
                         help="device: {cuda, cpu}")
     parser.add_argument('--node_num', type=int, default=20, # 200
                         help="Number of nodes")
-    parser.add_argument('--T', type=int, default=200,  # 100 
+    parser.add_argument('--T', type=int, default=2,  # 100
                         help="Number of communication rounds")
-    parser.add_argument('--E', type=int, default=3, # 3
+    parser.add_argument('--E', type=int, default=1, # 3
                         help="Number of local epochs: E")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help="Type of algorithms:{mnist, cifar10,cifar100, fmnist}") 
@@ -41,6 +41,8 @@ def args_parser():
                         help="random seed for the whole experiment")
     parser.add_argument('--exp_name', type=str, default='FirstTable',
                         help="experiment name")
+    parser.add_argument('--fusion', type=int, default=0,
+                        help="AW fusion 0 : Proposed, 1 : FedAvg * Proposed, 2 : Proposed + Proposed * FedAvg")
 
 
     # Server function

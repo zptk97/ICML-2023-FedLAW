@@ -1,0 +1,21 @@
+세팅 당 실험해봐야하는것
+	FedAvg, FedProx, FedLAW, 제안기법4종, fusion1 제안기법4종, fusion2 제안기법4종
+
+FedAvg
+	python main_propose.py --server_method=fedavg --exp_name=fedavg_E1C1
+
+FedProx
+	python main_baselines.py --server_method=fedavg --client_method=fedprox --exp_name=fedprox_E1C1
+
+FedLAW
+	python main_fedlaw.py --server_method=fedlaw --exp_name=fedlaw_E1C1
+
+제안기법 4종
+	python main_propose.py --server_method=gl_model_gradients_distance --exp_name=gl_model_gradients_distance_fusion0_E1C1
+	python main_propose.py --server_method=gl_layer_gradients_distance --exp_name=gl_layer_gradients_distance_fusion0_E1C1
+	python main_propose.py --server_method=ll_model_gradients_distance --exp_name=ll_model_gradients_distance_fusion0_E1C1
+	python main_propose.py --server_method=ll_layer_gradients_distance --exp_name=ll_layer_gradients_distance_fusion0_E1C1
+
+제안기법 4종 + fusion1
+
+제안기법 4종 + fusion2

@@ -54,8 +54,7 @@ if __name__ == '__main__':
     test_acc_recorder = []
     gamma_recorder = []
     optimized_weights_recorder = []
-    all_distance_recorder = []
-    participation_distance_recorder = []
+    # gradients_distance_recorder = []
     proportion_data_recorder = []
     for rounds in range(args.T):
         print('===============Stage 1 The {:d}-th round==============='.format(rounds + 1))
@@ -71,11 +70,13 @@ if __name__ == '__main__':
         else:
             select_list = generate_selectlist(client_nodes, args.select_ratio)
 
-        # get gradients distance
-        all_distance, participation_distance = get_gradients(args, central_node, client_nodes, select_list)
-
         # FedLAW server update
         agg_weights, client_params = receive_client_models(args, client_nodes, select_list, size_weights)
+
+        # # get gradients distance
+        # fedavg_agg_weights = agg_weights
+        # gradients_distance = get_gradients(args, central_node, client_params, select_list, fedavg_agg_weights)
+
         gamma, optmized_weights = fedlaw_optimization(args, agg_weights, client_params, central_node)
         central_node = fedlaw_generate_global_model(gamma, optmized_weights, client_params, central_node)
         acc = validate(args, central_node, which_dataset= 'local')
@@ -87,8 +88,7 @@ if __name__ == '__main__':
         test_acc_recorder.append(acc)
         gamma_recorder.append(gamma.cpu().data)
         optimized_weights_recorder.append(optmized_weights)
-        all_distance_recorder.append(all_distance)
-        participation_distance_recorder.append(participation_distance)
+        # gradients_distance_recorder.append(gradients_distance)
         proportion_data_recorder.append(proportion_data)
         # Final acc recorder
         if rounds >= args.T - 10:
@@ -100,5 +100,4 @@ if __name__ == '__main__':
     np.save("output/" + args.exp_name + "_gamma.npy", np.array(gamma_recorder))
     np.save("output/" + args.exp_name + "_optimized_weights.npy", np.array(optimized_weights_recorder))
     np.save("output/" + args.exp_name + "_proportion_data.npy", np.array(proportion_data_recorder))
-    np.save("output/" + args.exp_name + "_all_distance.npy", np.array(all_distance_recorder))
-    np.save("output/" + args.exp_name + "_participation_distance.npy", np.array(participation_distance_recorder))
+    # np.save("output/" + args.exp_name + "_gradients_distance.npy", np.array(gradients_distance_recorder))
