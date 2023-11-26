@@ -27,7 +27,7 @@ def args_parser():
                         help="device: {cuda, cpu}")
     parser.add_argument('--node_num', type=int, default=20, # 200
                         help="Number of nodes")
-    parser.add_argument('--T', type=int, default=2,  # 100
+    parser.add_argument('--T', type=int, default=200,  # 100
                         help="Number of communication rounds")
     parser.add_argument('--E', type=int, default=1, # 3
                         help="Number of local epochs: E")
@@ -37,12 +37,14 @@ def args_parser():
                     help="the ratio of client selection in each round")
     parser.add_argument('--local_model', type=str, default='CNN',
                         help='Type of local model: {CNN, ResNet8, AlexNet}')
-    parser.add_argument('--random_seed', type=int, default=10,
+    parser.add_argument('--random_seed', type=int, default=11,
                         help="random seed for the whole experiment")
     parser.add_argument('--exp_name', type=str, default='FirstTable',
                         help="experiment name")
     parser.add_argument('--fusion', type=int, default=0,
                         help="AW fusion 0 : Proposed, 1 : FedAvg * Proposed, 2 : Proposed + Proposed * FedAvg")
+    parser.add_argument('--exp_num', type=int, default=1,
+                        help="experiments iter number")
 
 
     # Server function
