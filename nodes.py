@@ -64,8 +64,11 @@ class Node(object):
         idxs_test = idxs[:int(validate_size)]
         idxs_train = idxs[int(validate_size):]
 
+        # 모든 client가 동일하게 10회 학습되게끔 local batch size 설정
+        train_batchsize = int(len(idxs_train) / 10)
+        print(train_batchsize)
         train_loader = DataLoader(DatasetSplit(train_set, idxs_train),
-                                  batch_size=self.args.batchsize, num_workers=0, shuffle=True)
+                                  batch_size=train_batchsize, num_workers=0, shuffle=True)
 
         test_loader = DataLoader(DatasetSplit(train_set, idxs_test),
                                  batch_size=self.args.validate_batchsize,  num_workers=0, shuffle=True)
