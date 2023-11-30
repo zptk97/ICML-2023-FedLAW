@@ -71,7 +71,7 @@ def proposed_generate_global_model(args, gamma ,agg_weights, client_params, cent
                 param += gamma * client_params[i][name_param] * agg_weights[i]
             global_params[name_param] = param
         central_node.model.load_state_dict(global_params)
-    elif args.server_method == 'fedavg':
+    elif args.server_method == 'fedavg' or args.server_method == 'uniform':
         global_params = copy.deepcopy(client_params[0])
         for name_param in global_params:
             param = torch.zeros_like(global_params[name_param])
@@ -132,6 +132,10 @@ def proposed_optimization(args, agg_weights, client_params, central_node, data, 
     elif args.server_method == 'fedavg':
         print("기본 FedAvg")
         agg_weights = agg_weights
+    elif args.server_method == 'uniform':
+        print("uniform averaging")
+        for i in range(len(client_params)):
+            agg_weights[i] = 1 / len(client_params)
     else:
         raise ValueError('Undefined server method...')
     if args.fixed_gamma:

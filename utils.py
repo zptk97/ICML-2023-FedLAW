@@ -482,7 +482,7 @@ def get_proportion_data(args, agg_weights, select_list, data):
     return proportion_data
 
 
-def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights):
+def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights, rounds):
     if "layer" in args.server_method:
         for i in range(len(propose_agg_weights)):
             for j in range(len(propose_agg_weights[i])):
@@ -491,7 +491,10 @@ def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights):
                 elif args.fusion == 2:
                     # propose_agg_weights[i][j] = propose_agg_weights[i][j] + (propose_agg_weights[i][j] * fedavg_agg_weights[i])
                     propose_agg_weights[i][j] = propose_agg_weights[i][j] + (
-                                0.5 * fedavg_agg_weights[i])
+                                1.0 * fedavg_agg_weights[i])
+                    # propose_agg_weights[i][j] = ((rounds / (args.T - 1)) * propose_agg_weights[i][j]) + (((args.T - 1 - rounds) / (args.T - 1)) * fedavg_agg_weights[i])
+                    # propose_agg_weights[i][j] = (propose_agg_weights[i][j]) + (
+                    #             ((args.T - 1 - rounds) / (args.T - 1)) * fedavg_agg_weights[i])
                 else:
                     ValueError('Undefined fusion method...')
         for i in range(len(propose_agg_weights[0])):
@@ -506,7 +509,10 @@ def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights):
             agg_weights = torch.tensor(fedavg_agg_weights) * propose_agg_weights
         elif args.fusion == 2:
             # agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * propose_agg_weights)
-            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 0.5)
+            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 1.0)
+            # agg_weights = ((rounds / (args.T - 1)) * propose_agg_weights) + (torch.tensor(fedavg_agg_weights) * ((args.T - 1 - rounds) / (args.T - 1)))
+            # agg_weights = (propose_agg_weights) + (
+            #             torch.tensor(fedavg_agg_weights) * ((args.T - 1 - rounds) / (args.T - 1)))
         else:
             ValueError('Undefined fusion method...')
         agg_weights = agg_weights / sum(agg_weights)
@@ -515,7 +521,11 @@ def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights):
             agg_weights = torch.tensor(fedavg_agg_weights) * propose_agg_weights
         elif args.fusion == 2:
             # agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * propose_agg_weights)
-            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 0.5)
+            agg_weights = propose_agg_weights + (torch.tensor(fedavg_agg_weights) * 1.0)
+            # agg_weights = ((rounds / (args.T - 1)) * propose_agg_weights) + (
+            #             torch.tensor(fedavg_agg_weights) * ((args.T - 1 - rounds) / (args.T - 1)))
+            # agg_weights = (propose_agg_weights) + (
+            #         torch.tensor(fedavg_agg_weights) * ((args.T - 1 - rounds) / (args.T - 1)))
         else:
             ValueError('Undefined fusion method...')
         agg_weights = agg_weights / sum(agg_weights)

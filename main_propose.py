@@ -92,8 +92,8 @@ if __name__ == '__main__':
             fedavg_agg_weights = agg_weights
             gamma, agg_weights = proposed_optimization(args, agg_weights, client_params, central_node, data, select_list)
 
-            if args.fusion != 0 and args.server_method != 'fedavg':
-                agg_weights = agg_weights_fusion(args, fedavg_agg_weights, agg_weights)
+            if args.fusion != 0 and (args.server_method != 'fedavg' and args.server_method != 'uniform'):
+                agg_weights = agg_weights_fusion(args, fedavg_agg_weights, agg_weights, rounds)
             # agg_weights, gamma = agg_weights_scale(args, fedavg_agg_weights, agg_weights, select_list, data)
 
             print("gamma : ", gamma)
