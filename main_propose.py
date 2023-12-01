@@ -94,7 +94,8 @@ if __name__ == '__main__':
 
             if args.fusion != 0 and (args.server_method != 'fedavg' and args.server_method != 'uniform'):
                 agg_weights = agg_weights_fusion(args, fedavg_agg_weights, agg_weights, rounds)
-            # agg_weights, gamma = agg_weights_scale(args, fedavg_agg_weights, agg_weights, select_list, data)
+            if args.etd_scale == 1 and (args.server_method != 'fedavg' and args.server_method != 'uniform'):
+                gamma = agg_weights_scale(args, fedavg_agg_weights, agg_weights, select_list, data, rounds)
 
             print("gamma : ", gamma)
             print("aggregation weights : ", agg_weights)
@@ -102,9 +103,8 @@ if __name__ == '__main__':
             gradients_distance = get_gradients(args, central_node, client_params, select_list, fedavg_agg_weights)
             # participate data proportion
             proportion_data = get_proportion_data(args, agg_weights, select_list, data)
-            FedLAW_gamma = 1.0
 
-            central_node = proposed_generate_global_model(args, FedLAW_gamma, agg_weights, client_params, central_node)
+            central_node = proposed_generate_global_model(args, gamma, agg_weights, client_params, central_node)
             acc = validate(args, central_node, which_dataset = 'local')
             # print('optmized_weights', optmized_weights)
             print(args.server_method + ' global model test acc is ', acc)

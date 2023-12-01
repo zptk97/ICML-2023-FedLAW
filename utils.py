@@ -534,7 +534,7 @@ def agg_weights_fusion(args, fedavg_agg_weights, propose_agg_weights, rounds):
     return agg_weights
 
 
-def agg_weights_scale(args, fedavg_agg_weights, propose_agg_weights, select_list, data):
+def agg_weights_scale(args, fedavg_agg_weights, propose_agg_weights, select_list, data, rounds):
     # Calculate FedAvg effective training data
     proportion = data.proportion
     fedavg_agg_weights = np.array(fedavg_agg_weights)
@@ -559,16 +559,12 @@ def agg_weights_scale(args, fedavg_agg_weights, propose_agg_weights, select_list
         sum_propose += sum(proportion[idx]) * agg_weights[i]
     # get scaling factor
     scaling_factor = sum_fedavg / sum_propose
-    # get scaled proposed AW
-    if "layer" in args.server_method:
-        for i in range(len(propose_agg_weights)):
-            for j in range(len(propose_agg_weights[i])):
-                propose_agg_weights[i][j] = propose_agg_weights[i][j] * scaling_factor
-    elif "model" in args.server_method:
-        propose_agg_weights = propose_agg_weights * scaling_factor
-    elif args.server_method == 'fedavg':
-        propose_agg_weights = propose_agg_weights * scaling_factor
+    # get gamma
+    if scaling_factor > 1.0:
+        scaling_factor = scaling_factor - 1.0
+        scaling_factor = scaling_factor * np.exp(-1.0 * rounds)
+        scaling_factor = scaling_factor + 1.0
     else:
-        raise ValueError('Undefined server method...')
+        scaling_factor = 1.0
 
-    return propose_agg_weights, scaling_factor
+    return scaling_factor
