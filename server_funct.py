@@ -228,14 +228,14 @@ def ll_layer_gradients_distance(central_node, client_params, fedavg_weights, sel
         if i == 0:
             param = copy.deepcopy(gradients[i])
             for name_param in param:
-                # param[name_param] = param[name_param] * fedavg_weights[i]
-                param[name_param] = param[name_param]
+                param[name_param] = param[name_param] * fedavg_weights[i]
+                # param[name_param] = param[name_param]
         else:
             for name_param in param:
-                # param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
-                param[name_param] = param[name_param] + gradients[i][name_param]
-    for name_param in param:
-        param[name_param] = param[name_param] / len(gradients)
+                param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
+                # param[name_param] = param[name_param] + gradients[i][name_param]
+    # for name_param in param:
+    #     param[name_param] = param[name_param] / len(gradients)
     avg_gradients = param
 
     # how many layer?
@@ -278,14 +278,14 @@ def ll_model_gradients_distance(central_node, client_params, fedavg_weights, sel
         if i == 0:
             param = copy.deepcopy(gradients[i])
             for name_param in param:
-                # param[name_param] = param[name_param] * fedavg_weights[i]
-                param[name_param] = param[name_param]
+                param[name_param] = param[name_param] * fedavg_weights[i]
+                # param[name_param] = param[name_param]
         else:
             for name_param in param:
-                # param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
-                param[name_param] = param[name_param] + gradients[i][name_param]
-    for name_param in param:
-        param[name_param] = param[name_param] / len(gradients)
+                param[name_param] = param[name_param] + (gradients[i][name_param] * fedavg_weights[i])
+                # param[name_param] = param[name_param] + gradients[i][name_param]
+    # for name_param in param:
+    #     param[name_param] = param[name_param] / len(gradients)
     avg_gradients = param
 
     # gradients concatenate
