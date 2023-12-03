@@ -45,15 +45,26 @@ class Data(object):
             if args.iid == 0:  # noniid
                 random_state = np.random.RandomState(int(args.random_seed))
                 num_indices = len(self.train_set)
-                if args.dirichlet_alpha2:
-                    groups, proportion = build_non_iid_by_dirichlet_hybrid(random_state=random_state, dataset=self.train_set, non_iid_alpha1=args.dirichlet_alpha,non_iid_alpha2=args.dirichlet_alpha2 ,num_classes=10, num_indices=num_indices, n_workers=node_num)  
-                elif args.longtail_clients != 'none':
-                    groups, proportion = build_non_iid_by_dirichlet_LT(random_state=random_state, dataset=self.train_set, lt_rho=args.longtail_clients, non_iid_alpha=args.dirichlet_alpha, num_classes=10, num_indices=num_indices, n_workers=node_num)  
+                if args.noniid_type == 'dirichlet':
+                    if args.dirichlet_alpha2:
+                        groups, proportion = build_non_iid_by_dirichlet_hybrid(random_state=random_state, dataset=self.train_set, non_iid_alpha1=args.dirichlet_alpha,non_iid_alpha2=args.dirichlet_alpha2 ,num_classes=10, num_indices=num_indices, n_workers=node_num)
+                    elif args.longtail_clients != 'none':
+                        groups, proportion = build_non_iid_by_dirichlet_LT(random_state=random_state, dataset=self.train_set, lt_rho=args.longtail_clients, non_iid_alpha=args.dirichlet_alpha, num_classes=10, num_indices=num_indices, n_workers=node_num)
+                    else:
+                        groups, proportion = build_non_iid_by_dirichlet_new(random_state=random_state, dataset=self.train_set, non_iid_alpha=args.dirichlet_alpha, num_classes=10, num_indices=num_indices, n_workers=node_num)
+                elif args.noniid_type == 'K':
+                    groups, proportion = build_non_iid_by_k(random_state=random_state, dataset=self.train_set,
+                                                             num_classes=10, num_indices=num_indices,
+                                                             n_workers=node_num, shared_per_user=args.K)
                 else:
-                    groups, proportion = build_non_iid_by_dirichlet_new(random_state=random_state, dataset=self.train_set, non_iid_alpha=args.dirichlet_alpha, num_classes=10, num_indices=num_indices, n_workers=node_num)  
+                    print("not supported non iid type, ", args.noniid_type)
+                    exit(1)
                 self.train_loader = groups
                 self.groups = groups
                 self.proportion = proportion
+                np.set_printoptions(precision=6, suppress=True)
+                print(len(groups))
+                print(proportion)
                 # np.set_printoptions(precision=6, suppress=True)
                 # print(proportion)
                 # num = []
@@ -62,7 +73,6 @@ class Data(object):
                 # print(num)
                 # # print(sum(num))
                 # exit()
-
             else:
                 data_num = [int(50000/node_num) for _ in range(node_num)]
                 splited_set = torch.utils.data.random_split(self.train_set, data_num)
@@ -146,6 +156,37 @@ class Data(object):
                 root="/home/Dataset/FashionMNIST", train=False, download=False, transform=val_transformer
             )
             self.test_loader = torch.utils.data.random_split(self.test_set, [int(len(self.test_set))])
+
+
+def build_non_iid_by_k(
+        random_state = np.random.RandomState(0), dataset = 0, num_classes = 10, num_indices = 60000, n_workers = 10, shared_per_user = 3
+):
+    proportion = np.zeros((20,10), dtype=int)
+    data_split = {i: [] for i in range(n_workers)}
+    target_idx_split = {}
+    target = torch.tensor(dataset.targets)
+
+    shard_per_class = int(shared_per_user * n_workers / num_classes)
+    for target_i in range(num_classes):
+        target_idx = torch.where(target==target_i)[0]
+        num_leftover = len(target_idx) % shard_per_class
+        leftover = target_idx[-num_leftover:] if num_leftover > 0 else []
+        new_target_idx = target_idx[:-num_leftover] if num_leftover > 0 else target_idx
+        new_target_idx = new_target_idx.reshape((shard_per_class, -1)).tolist()
+        for i, leftover_target_idx in enumerate(leftover):
+            new_target_idx[i] = new_target_idx[i] + [leftover_target_idx.item()]
+        target_idx_split[target_i] = new_target_idx
+    target_split = list(range(num_classes)) * shard_per_class
+    target_split = torch.tensor(target_split)[torch.randperm(len(target_split))].tolist()
+    target_split = torch.tensor(target_split).reshape((n_workers, -1)).tolist()
+    for i in range(n_workers):
+        for target_i in target_split[i]:
+            idx = torch.randint(len(target_idx_split[target_i]), (1,)).item()
+            proportion[i][target_i] = proportion[i][target_i] + len(target_idx_split[target_i][idx])
+            data_split[i].extend(target_idx_split[target_i].pop(idx))
+
+    group = data_split
+    return group, proportion
 
 
 ### Dirichlet noniid functions ###

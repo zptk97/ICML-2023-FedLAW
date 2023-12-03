@@ -182,6 +182,32 @@ class PerturbedGradientDescent(Optimizer):
 # Validation function
 ##############################################################################
 
+def validate_withloss(args, node, which_dataset='validate'):
+    node.model.cuda().eval()
+    if which_dataset == 'validate':
+        test_loader = node.validate_set
+    elif which_dataset == 'local':
+        test_loader = node.local_data
+    else:
+        raise ValueError('Undefined...')
+
+    loss = []
+    correct = 0.0
+    with torch.no_grad():
+        for idx, (data, target) in enumerate(test_loader):
+            data, target = data.cuda(), target.cuda()
+            output = node.model(data)
+            # acc
+            pred = output.argmax(dim=1)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+            # loss
+            loss_local = F.cross_entropy(output, target, reduction='mean')
+            loss.append(loss_local.item())
+        acc = correct / len(test_loader.dataset) * 100
+        loss_value = sum(loss) / len(loss)
+    return acc, loss_value
+
+
 def validate(args, node, which_dataset='validate'):
     node.model.cuda().eval()
     if which_dataset == 'validate':
@@ -349,119 +375,6 @@ def get_gradients(args, central_node, client_params, select_list, fedavg_agg_wei
                           'll_model': np.array(ll_model_gradients_distance), 'll_layer': np.array(ll_layer_gradients_distance)}
     return gradients_distance
 
-#
-# # get gradients of each client
-# def get_gradients(args, central_node, clients_nodes, select_list, fedavg_agg_weights):
-#     # 일단은 gradients 자체만 구해서 리턴 후 저장해보자
-#     # 만약 크기가 너무 커서 비효율적이라면 필요한 계산까지 해서 저장해보자
-#     # 20 client 200 round 면 4GB 인듯 너무 큼
-#     # 여기서 계산까지해서 보내자
-#     global_model = copy.deepcopy(central_node.model.state_dict())
-#
-#     # local gradients calculate
-#     all_gradients = []
-#     participation_gradients = []
-#     for i in range(len(clients_nodes)):
-#         param = copy.deepcopy(global_model)
-#         client_param = copy.deepcopy(clients_nodes[i].model.state_dict())
-#         for name_param in param:
-#             param[name_param] = global_model[name_param] - client_param[name_param]
-#         # get gradients of all clients
-#         all_gradients.append(copy.deepcopy(param))
-#         # # get gradients of participation clients
-#         # if i in select_list:
-#         #     participation_gradients.append(copy.deepcopy(param))
-#
-#     # gradients concatenate
-#     all_flatted_gradients = []
-#     participation_flatted_gradients = []
-#     for i in range(len(all_gradients)):
-#         tmp = None
-#         for name_param in all_gradients[i]:
-#             if tmp == None:
-#                 tmp = torch.flatten(copy.deepcopy(all_gradients[i][name_param]))
-#             else:
-#                 tmp = torch.cat((tmp, torch.flatten(copy.deepcopy(all_gradients[i][name_param]))))
-#         all_flatted_gradients.append(tmp)
-#         # if i in select_list:
-#         #     participation_flatted_gradients.append(tmp)
-#
-#     # calculate gl model-wise distance
-#     all_gl_model_distance = []
-#     participation_gl_model_distance = []
-#     for i in range(len(all_flatted_gradients)):
-#         distance = torch.linalg.vector_norm(all_flatted_gradients[i], ord=2).item()
-#         distance = np.array(distance)
-#         all_gl_model_distance.append(distance)
-#         if i in select_list:
-#             participation_gl_model_distance.append(distance)
-#
-#     # calculate gl layer-wise distance
-#     all_gl_layer_distance = []
-#     participation_gl_layer_distance = []
-#     for i in range(len(all_gradients)):
-#         tmp = []
-#         for name_param in all_gradients[i]:
-#             layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param], ord=2).item()
-#             tmp.append(layer_distance)
-#         tmp = np.average(tmp)
-#         all_gl_layer_distance.append(tmp)
-#         if i in select_list:
-#             participation_gl_layer_distance.append(tmp)
-#
-#     # calculate ll model-wise distance
-#     all_ll_model_distance = []
-#     participation_ll_model_distance = []
-#     for i in range(len(all_flatted_gradients)):
-#         tmp = []
-#         participation_tmp = []
-#         for j in range(len(all_flatted_gradients)):
-#             all_model_distance = torch.linalg.vector_norm(all_flatted_gradients[i] - all_flatted_gradients[j],
-#                                                           ord=2).item()
-#             tmp.append(all_model_distance)
-#             if j in select_list:
-#                 participation_model_distance = torch.linalg.vector_norm(
-#                     all_flatted_gradients[i] - all_flatted_gradients[j], ord=2).item()
-#                 participation_tmp.append(participation_model_distance)
-#         tmp = np.array(tmp)
-#         all_ll_model_distance.append(tmp)
-#         if i in select_list:
-#             participation_tmp = np.array(participation_tmp)
-#             participation_ll_model_distance.append(participation_tmp)
-#
-#     # calculate ll layer-wise distance
-#     all_ll_layer_distance = []
-#     participation_ll_layer_distance = []
-#     for i in range(len(all_gradients)):
-#         tmp = []
-#         part_tmp = []
-#         for j in range(len(all_gradients)):
-#             tmp_layer = []
-#             part_tmp_layer = []
-#             for name_param in all_gradients[i]:
-#                 layer_distance = torch.linalg.vector_norm(all_gradients[i][name_param] - all_gradients[j][name_param],
-#                                                           ord=2).item()
-#                 tmp_layer.append(layer_distance)
-#                 if j in select_list:
-#                     part_layer_distance = torch.linalg.vector_norm(
-#                         all_gradients[i][name_param] - all_gradients[j][name_param], ord=2).item()
-#                     part_tmp_layer.append(part_layer_distance)
-#             tmp_layer = np.average(tmp_layer)
-#             tmp.append(tmp_layer)
-#             if j in select_list:
-#                 part_tmp_layer = np.average(part_tmp_layer)
-#                 part_tmp.append(part_tmp_layer)
-#         all_ll_layer_distance.append(tmp)
-#         if i in select_list:
-#             participation_ll_layer_distance.append(part_tmp)
-#
-#     all_distance = {'gl_model' : np.array(all_gl_model_distance), 'gl_layer' : np.array(all_gl_layer_distance),
-#                     'll_model' : np.array(all_ll_model_distance), 'll_layer' : np.array(all_ll_layer_distance)}
-#     participation_distance = {'gl_model': np.array(participation_gl_model_distance), 'gl_layer': np.array(participation_gl_layer_distance),
-#                     'll_model': np.array(participation_ll_model_distance), 'll_layer': np.array(participation_ll_layer_distance)}
-#     return all_distance, participation_distance
-
-
 def get_proportion_data(args, agg_weights, select_list, data):
     np.set_printoptions(precision=6, suppress=True)
     proportion = data.proportion
@@ -568,3 +481,18 @@ def agg_weights_scale(args, fedavg_agg_weights, propose_agg_weights, select_list
         scaling_factor = 1.0
 
     return scaling_factor
+
+
+def get_global_weights(central_node):
+    # get global model's flatted weights
+    global_model = copy.deepcopy(central_node.model.state_dict())
+    # gradients concatenate
+    flatted_weights = []
+    for name_param in global_model:
+        if len(flatted_weights) == 0:
+            flatted_weights = torch.flatten(global_model[name_param])
+        else:
+            flatted_weights = torch.cat((flatted_weights, torch.flatten(global_model[name_param])))
+    flatted_weights = flatted_weights.to('cpu')
+    return flatted_weights
+

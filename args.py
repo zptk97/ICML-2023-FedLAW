@@ -5,8 +5,8 @@ def args_parser():
     parser = argparse.ArgumentParser()
 
     # Data
-    parser.add_argument('--noniid_type', type=str, default='dirichlet',
-                        help="iid or dirichlet")
+    parser.add_argument('--noniid_type', type=str, default='K',
+                        help="iid or dirichlet or K")
     parser.add_argument('--iid', type=int, default=0,  
                         help='set 1 for iid')
     parser.add_argument('--batchsize', type=int, default=128, 
@@ -21,13 +21,15 @@ def args_parser():
                     help="longtail_proxyset")
     parser.add_argument('--longtail_clients', type=str, default='none', 
                     help="longtail_clients")
+    parser.add_argument('--K', type=int, default=2,
+                        help="how many class taken by each client")
 
     # System
     parser.add_argument('--device', type=str, default='0',
                         help="device: {cuda, cpu}")
     parser.add_argument('--node_num', type=int, default=20, # 200
                         help="Number of nodes")
-    parser.add_argument('--T', type=int, default=200,  # 100
+    parser.add_argument('--T', type=int, default=300,  # 100
                         help="Number of communication rounds")
     parser.add_argument('--E', type=int, default=1, # 3
                         help="Number of local epochs: E")
@@ -37,7 +39,7 @@ def args_parser():
                     help="the ratio of client selection in each round")
     parser.add_argument('--local_model', type=str, default='CNN',
                         help='Type of local model: {CNN, ResNet8, AlexNet}')
-    parser.add_argument('--random_seed', type=int, default=11,
+    parser.add_argument('--random_seed', type=int, default=10,
                         help="random seed for the whole experiment")
     parser.add_argument('--exp_name', type=str, default='FirstTable',
                         help="experiment name")
@@ -45,6 +47,8 @@ def args_parser():
                         help="AW fusion 0 : Proposed, 1 : FedAvg * Proposed, 2 : Proposed + Proposed * FedAvg")
     parser.add_argument('--exp_num', type=int, default=1,
                         help="experiments iter number")
+    parser.add_argument('--etd_scale', type=int, default=0,
+                        help="scale AW consider effective training data")
 
 
     # Server function
@@ -74,7 +78,7 @@ def args_parser():
                         help="optimizer: {sgd, adam}")
     parser.add_argument('--client_valid_ratio', type=float, default=0.3,
                     help="the ratio of validate set in the clients")  
-    parser.add_argument('--lr', type=float, default=0.08,
+    parser.add_argument('--lr', type=float, default=0.05,
                         help='clients loca learning rate')
     parser.add_argument('--local_wd_rate', type=float, default=5e-4,
                         help='clients local wd rate')
