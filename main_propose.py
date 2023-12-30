@@ -29,10 +29,8 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.device
         torch.cuda.set_device('cuda:'+args.device)
 
-
         # Loading data
         data = Data(args)
-
 
         # Data-size-based aggregation weights
         sample_size = []
@@ -43,7 +41,9 @@ if __name__ == '__main__':
         # Initialize the central node
         # num_id equals to -1 stands for central node
         central_node = Node(-1, data.test_loader[0], data.test_set, args)
-
+        # print(central_node.model.state_dict())
+        # torch.save(central_node.model.state_dict(), './init.pt')
+        # exit()
 
         # Initialize the client nodes
         client_nodes = {}
@@ -58,6 +58,7 @@ if __name__ == '__main__':
         optimized_weights_recorder = []
         gradients_distance_recorder = []
         proportion_data_recorder = []
+        global_dict_recorder = []
         previous_select_list = None
         server_method = args.server_method
         for rounds in range(args.T):
@@ -105,15 +106,19 @@ if __name__ == '__main__':
             proportion_data = get_proportion_data(args, agg_weights, select_list, data)
 
             central_node = proposed_generate_global_model(args, gamma, agg_weights, client_params, central_node)
-            acc = validate(args, central_node, which_dataset = 'local')
-            # print('optmized_weights', optmized_weights)
+            acc, loss = validate_withloss(args, central_node, which_dataset = 'local')
             print(args.server_method + ' global model test acc is ', acc)
+            # flatted weights, loss, acc 저장하자
+            global_weights = get_global_weights(central_node)
+            global_dict = {'flat_w': global_weights, 'accuracy': torch.tensor(acc), 'loss': torch.tensor(loss)}
+
             test_acc_recorder.append(acc)
             gamma_recorder.append(gamma)
             optimized_weights_recorder.append(np.array(agg_weights))
             # if "gradients" in args.server_method:
             gradients_distance_recorder.append(gradients_distance)
             proportion_data_recorder.append(proportion_data)
+            global_dict_recorder.append(global_dict)
             # Final acc recorder
             if rounds >= args.T - 10:
                 final_test_acc_recorder.update(acc)
@@ -125,4 +130,5 @@ if __name__ == '__main__':
         np.save("output/" + args.exp_name + "_optimized_weights.npy", np.array(optimized_weights_recorder))
         np.save("output/" + args.exp_name + "_proportion_data.npy", np.array(proportion_data_recorder))
         np.save("output/" + args.exp_name + "_gradients_distance.npy", np.array(gradients_distance_recorder))
+        np.save("output/" + args.exp_name + "_global_dict.npy", np.array(global_dict_recorder))
 

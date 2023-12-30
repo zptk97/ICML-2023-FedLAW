@@ -121,6 +121,8 @@ def init_optimizer(num_id, model, args):
     optimizer = []
     if num_id > -1 and args.client_method == 'fedprox':
         optimizer = PerturbedGradientDescent(model.parameters(), lr=args.lr, mu=args.mu)
+    elif num_id > -1 and args.client_method == 'scaffold':
+        optimizer = SCAFFOLDOptimizer(model.parameters(), lr=args.lr)
     else:
         if args.optimizer == 'sgd':
             optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
@@ -177,6 +179,17 @@ class PerturbedGradientDescent(Optimizer):
                 d_p = p.grad.data + group['mu'] * (p.data - g.data)
                 p.data.add_(d_p, alpha=-group['lr'])
 
+
+class SCAFFOLDOptimizer(Optimizer):
+    def __init__(self, params, lr):
+        defaults = dict(lr=lr)
+        super(SCAFFOLDOptimizer, self).__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, server_cs, client_cs):
+        for group in self.param_groups:
+            for p, sc, cc in zip(group['params'], server_cs, client_cs):
+                p.data.add_(other=(p.grad.data + sc - cc), alpha=-group['lr'])
 
 ##############################################################################
 # Validation function

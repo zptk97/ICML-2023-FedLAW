@@ -71,7 +71,7 @@ class Data(object):
                 # for i in range(len(proportion)):
                 #     num.append(np.sum(proportion[i]))
                 # print(num)
-                # # print(sum(num))
+                # print(sum(num))
                 # exit()
             else:
                 data_num = [int(50000/node_num) for _ in range(node_num)]
@@ -161,7 +161,7 @@ class Data(object):
 def build_non_iid_by_k(
         random_state = np.random.RandomState(0), dataset = 0, num_classes = 10, num_indices = 60000, n_workers = 10, shared_per_user = 3
 ):
-    proportion = np.zeros((20,10), dtype=int)
+    proportion = np.zeros((n_workers,num_classes), dtype=int)
     data_split = {i: [] for i in range(n_workers)}
     target_idx_split = {}
     target = torch.tensor(dataset.targets)

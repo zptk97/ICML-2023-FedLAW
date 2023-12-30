@@ -30,7 +30,15 @@ class Node(object):
 
         self.model = init_model(self.args.local_model, self.args).cuda()
         self.optimizer = init_optimizer(self.num_id, self.model, args)
-        
+
+        # node init for scaffold
+        if args.client_method == 'scaffold':
+            self.c = []
+            self.previous_c = []
+            for param in self.model.parameters():
+                self.c.append(torch.zeros_like(param))
+                self.previous_c.append(torch.zeros_like(param))
+
         # node init for feddyn
         if args.client_method == 'feddyn':
             self.old_grad = None

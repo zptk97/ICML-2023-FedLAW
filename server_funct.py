@@ -1042,6 +1042,17 @@ def Server_update(args, central_node, client_nodes, select_list, size_weights):
     if args.server_method == 'fedavg':
         avg_global_param = fedavg(client_params, agg_weights)
         central_node.model.load_state_dict(avg_global_param)
+        if args.client_method == 'scaffold':
+            avg_c = []
+            for param in central_node.model.parameters():
+                avg_c.append(torch.zeros_like(param))
+            for idx in select_list:
+                for i in range(len(avg_c)):
+                    avg_c[i] += (client_nodes[idx].c[i] - client_nodes[idx].previous_c[i]) / len(client_nodes)
+            # avg_c = avg_c / len(client_nodes)
+            central_node.previous_c = copy.deepcopy(central_node.c)
+            for i in range(len(avg_c)):
+                central_node.c[i] = central_node.c[i] + avg_c[i]
 
     elif args.server_method == 'feddf':
         avg_global_param = fedavg(client_params, agg_weights)

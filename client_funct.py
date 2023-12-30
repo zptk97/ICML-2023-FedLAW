@@ -40,6 +40,21 @@ def Client_update(args, client_nodes, central_node):
             client_losses.append(sum(epoch_losses)/len(epoch_losses))
             train_loss = sum(client_losses)/len(client_losses)
 
+    elif args.client_method == 'scaffold':
+        client_losses = []
+        for i in range(len(client_nodes)):
+            epoch_losses = []
+            for epoch in range(args.E):
+                loss = client_scaffold(args, client_nodes[i], central_node)
+                epoch_losses.append(loss)
+            client_losses.append(sum(epoch_losses) / len(epoch_losses))
+            train_loss = sum(client_losses) / len(client_losses)
+            # update c of each client, ci
+            client_nodes[i].previous_c = copy.deepcopy(client_nodes[i].c)
+            for ci, c, x, yi in zip(client_nodes[i].c, central_node.c, central_node.model.parameters(),
+                                    client_nodes[i].model.parameters()):
+                ci.data = ci - c + 1 / len(client_nodes[i].local_data) / args.lr * (x - yi)
+
     elif args.client_method == 'fedprox':
         global_model_param = copy.deepcopy(list(central_node.model.parameters()))
         client_losses = []
@@ -103,6 +118,28 @@ def client_localTrain(args, node, loss = 0.0):
         node.optimizer.step()
 
     return loss/len(train_loader)
+
+# SCAFFOLD
+def client_scaffold(args, node, central_node, loss = 0.0):
+    node.model.train()
+
+    loss = 0.0
+    train_loader = node.local_data
+    for idx, (data, target) in enumerate(train_loader):
+        # train model
+        data, target = data.cuda(), target.cuda()
+        output_local = node.model(data)
+
+        loss_local = F.cross_entropy(output_local, target)
+        # zero_grad
+        node.optimizer.zero_grad()
+
+        loss_local.backward()
+        loss = loss + loss_local.item()
+        node.optimizer.step(central_node.c, node.c)
+
+    return loss / len(train_loader)
+
 
 # FedProx
 def client_fedprox(global_model_param, args, node, loss = 0.0):
