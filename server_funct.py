@@ -99,6 +99,12 @@ def proposed_optimization(args, agg_weights, client_params, central_node, data, 
         print("local-local model-wise gradients distance 구현")
         # agg_weights = ll_model_gradients_distance(central_node, client_params)
         agg_weights = ll_model_gradients_distance(central_node, client_params, agg_weights, select_list)
+    elif args.server_method == 'both':
+        print("GL + LL 구현")
+        agg_weights_GL = gl_model_gradients_distance(central_node, client_params)
+        agg_weights_LL = ll_model_gradients_distance(central_node, client_params, agg_weights, select_list)
+        agg_weights = agg_weights_GL + agg_weights_LL
+        agg_weights = agg_weights / sum(agg_weights)
     elif args.server_method == 'gl_layer_cosine':
         print("global-local layer-wise cosine 구현")
         agg_weights = gl_layer_cosine(central_node, client_params)
